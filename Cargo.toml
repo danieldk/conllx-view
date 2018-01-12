@@ -1,0 +1,21 @@
+[package]
+name = "conllx-view"
+version = "0.1.0"
+authors = ["Daniël de Kok <me@danieldk.eu>"]
+
+[dependencies]
+cairo-rs = "0.4"
+conllx = "0.10"
+enum-map ="0.2"
+failure = "0.1"
+getopts = "0.2"
+gio = "0.4"
+glib = "0.5"
+itertools = "0.7"
+petgraph = "0.4"
+rsvg = "0.4"
+stdinout = "0.4"
+
+[dependencies.gtk]
+version = "0.4"
+features = ["v3_10"]
