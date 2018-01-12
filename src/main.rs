@@ -1,23 +1,22 @@
 extern crate conllx;
-extern crate petgraph;
+extern crate dot;
 extern crate getopts;
+extern crate petgraph;
 extern crate stdinout;
 
 use std::env::args;
+use std::io;
 use std::process;
 
+use dot::render;
 use getopts::Options;
-use petgraph::dot::{Dot, Config};
 use stdinout::{Input, OrExit};
 
 mod graph;
 use graph::sentence_to_graph;
 
 fn print_usage(program: &str, opts: Options) {
-    let brief = format!(
-        "Usage: {} [options] EXPR [INPUT_FILE]",
-        program
-    );
+    let brief = format!("Usage: {} [options] EXPR [INPUT_FILE]", program);
     print!("{}", opts.usage(&brief));
 }
 
@@ -33,7 +32,8 @@ fn main() {
         "layer: form, lemma, cpos, pos, headrel, or pheadrel (default: form)",
         "LAYER",
     );
-    let matches = opts.parse(&args[1..]).or_exit("Could not parse command-line arguments", 1);
+    let matches = opts.parse(&args[1..])
+        .or_exit("Could not parse command-line arguments", 1);
 
     if matches.opt_present("h") {
         print_usage(&program, opts);
@@ -52,9 +52,13 @@ fn main() {
         let sentence = sentence.or_exit("Cannot read sentence", 1);
 
         let graph = sentence_to_graph(&sentence, false);
-        let simplified_graph = graph.map(|_, n| n.token.form(), |_, e| e.unwrap());
+        //let simplified_graph = graph.map(|_, n| n.token.form(), |_, e| e.unwrap());
 
-        println!("{:?}", Dot::with_config(&simplified_graph, &[]));
+        //println!("{:?}", Dot::with_config(&simplified_graph, &[]));
+
+        let stdout = io::stdout();
+        let mut handle = stdout.lock();
+        render(&graph, &mut handle).or_exit("Error writing dot output", 1);
 
         return;
     }

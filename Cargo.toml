@@ -5,6 +5,7 @@ authors = ["Daniël de Kok <me@danieldk.eu>"]
 
 [dependencies]
 conllx = "0.9"
+dot = "0.1"
 getopts = "0.2"
 petgraph = "0.4"
 stdinout = "0.4"
