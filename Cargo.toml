@@ -1,0 +1,10 @@
+[package]
+name = "conllx-view"
+version = "0.1.0"
+authors = ["Daniël de Kok <me@danieldk.eu>"]
+
+[dependencies]
+conllx = "0.9"
+getopts = "0.2"
+petgraph = "0.4"
+stdinout = "0.4"
