@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use conllx::{Sentence, Token};
-use dot::{Edges, GraphWalk, Id, LabelText, Labeller, Nodes};
+use dot::{Edges, GraphWalk, Id, LabelText, Labeller, Nodes, Style};
 use petgraph::{Directed, Graph};
 use petgraph::graph::{EdgeIndex, NodeIndex};
 
@@ -28,6 +28,10 @@ impl<'a> Labeller<'a, NodeIndex, EdgeIndex> for DependencyGraph<'a> {
 
     fn node_label(&'a self, n: &NodeIndex) -> LabelText<'a> {
         LabelText::LabelStr(Cow::Borrowed(self.0[*n].token.form()))
+    }
+
+    fn node_shape(&'a self, _node: &NodeIndex) -> Option<LabelText<'a>> {
+        Some(LabelText::LabelStr("plaintext".into()))
     }
 }
 
