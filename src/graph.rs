@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use conllx::{Sentence, Token};
-use dot::{Edges, GraphWalk, Id, LabelText, Labeller, Nodes, Style};
+use dot::{Edges, GraphWalk, Id, LabelText, Labeller, Nodes};
 use petgraph::{Directed, Graph};
 use petgraph::graph::{EdgeIndex, NodeIndex};
 
