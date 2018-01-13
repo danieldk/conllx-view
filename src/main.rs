@@ -10,10 +10,10 @@ extern crate stdinout;
 use std::cell::RefCell;
 use std::env::args;
 use std::io::{Read, Write};
+use std::ops::Deref;
 use std::process::{self, Command, Stdio};
 use std::rc::Rc;
 
-use cairo::Context;
 use dot::render;
 use getopts::Options;
 use gtk::prelude::*;
@@ -22,7 +22,7 @@ use rsvg::{Handle, HandleExt};
 use stdinout::{Input, OrExit};
 
 mod graph;
-use graph::sentence_to_graph;
+use graph::{sentence_to_graph, DependencyGraph};
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options] EXPR [INPUT_FILE]", program);
@@ -56,9 +56,76 @@ fn dot_to_svg(dot: &[u8]) -> String {
     svg
 }
 
-struct SVGTree {
-    handle: Handle,
-    scale: Option<f64>,
+struct DependencyTreeWidget {
+    drawing_area: DrawingArea,
+    handle: Rc<RefCell<Option<Handle>>>,
+    scale: Rc<RefCell<Option<f64>>>,
+}
+
+impl Deref for DependencyTreeWidget {
+    type Target = DrawingArea;
+
+    fn deref(&self) -> &DrawingArea {
+        &self.drawing_area
+    }
+}
+
+impl DependencyTreeWidget {
+    pub fn new() -> Self {
+        DependencyTreeWidget {
+            drawing_area: DrawingArea::new(),
+            handle: Rc::new(RefCell::new(None)),
+            scale: Rc::new(RefCell::new(None)),
+        }
+    }
+
+    pub fn set_graph(&mut self, graph: &DependencyGraph) {
+        let mut dot = Vec::new();
+        render(graph, &mut dot).or_exit("Error writing dot output", 1);
+        let svg = dot_to_svg(&dot);
+
+        let handle_clone = self.handle.clone();
+        *handle_clone.borrow_mut() =
+            Some(Handle::new_from_data(svg.as_bytes()).or_exit("Error parsing SVG", 1));
+
+        let scale_clone = self.scale.clone();
+        *scale_clone.borrow_mut() = None;
+
+        self.drawing_area.connect_draw(move |drawing_area, cr| {
+            let handle = handle_clone.borrow();
+
+            if handle.is_none() {
+                return Inhibit(false);
+            }
+
+            let handle = handle.as_ref().unwrap();
+
+            let mut scale = scale_clone.borrow_mut();
+            let svg_dims = handle.get_dimensions();
+            if scale.is_none() {
+                let da_width = drawing_area.get_allocated_width();
+                let da_height = drawing_area.get_allocated_height();
+
+                let scale_x = da_width as f64 / svg_dims.width as f64;
+                let scale_y = da_height as f64 / svg_dims.height as f64;
+
+                *scale = Some(scale_x.min(scale_y));
+            }
+
+            let scale = scale.unwrap();
+
+            drawing_area.set_size_request(
+                (svg_dims.width as f64 * scale).ceil() as i32,
+                (svg_dims.height as f64 * scale).ceil() as i32,
+            );
+
+            cr.scale(scale, scale);
+            cr.paint_with_alpha(0.0);
+            handle.render_cairo(&cr);
+
+            Inhibit(false)
+        });
+    }
 }
 
 fn main() {
@@ -94,60 +161,28 @@ fn main() {
 
     let graph = sentence_to_graph(&sentence, false);
 
-    let mut dot = Vec::new();
-    render(&graph, &mut dot).or_exit("Error writing dot output", 1);
-    let svg = dot_to_svg(&dot);
-
     gtk::init().or_exit("Failed to initialize GTK", 1);
 
-    // FIXME: should not terminate the viewer.
-    let svg_tree = Rc::new(RefCell::new(SVGTree{handle: Handle::new_from_data(svg.as_bytes()).or_exit("Error parsing SVG", 1), scale: None}));
-    let svg_tree_clone = svg_tree.clone();
-
-    // SVG drawing from rsvg-rs example.
-    drawable(800, 600, move |drawing_area, cr| {
-        let mut svg_tree = svg_tree_clone.borrow_mut();
-        let svg_dims = svg_tree.handle.get_dimensions();
-
-        if svg_tree.scale.is_none() {
-            let da_width = drawing_area.get_allocated_width();
-            let da_height = drawing_area.get_allocated_height();
-
-            let scale_x = da_width as f64 / svg_dims.width as f64;
-            let scale_y = da_height as f64 / svg_dims.height as f64;
-
-            svg_tree.scale = Some(scale_x.min(scale_y));
-        }
-
-        let scale = svg_tree.scale.unwrap();
-
-        cr.scale(scale, scale);
-
-        drawing_area.set_size_request((svg_dims.width as f64 * scale).ceil() as i32, (svg_dims.height as f64 * scale).ceil() as i32);
-
-        cr.paint_with_alpha(0.0);
-        svg_tree.handle.render_cairo(&cr);
-
-        Inhibit(false)
-    });
+    create_gui(800, 600, &graph);
 
     gtk::main();
 }
 
-pub fn drawable<F>(width: i32, height: i32, draw_fn: F)
-where
-    F: Fn(&DrawingArea, &Context) -> Inhibit + 'static,
-{
+pub fn create_gui(width: i32, height: i32, graph: &DependencyGraph) {
     let window = gtk::Window::new(gtk::WindowType::Toplevel);
     window.set_title("conllx-view");
     window.set_border_width(10);
 
-    let drawing_area = Box::new(DrawingArea::new)();
-    drawing_area.set_size_request(100, 100);
-    drawing_area.connect_draw(draw_fn);
+    let mut dep_widget = DependencyTreeWidget::new();
+    dep_widget.set_graph(graph);
+
+    window.connect_key_press_event(|_, key_event| {
+        println!("key: {}", key_event.get_keyval());
+        Inhibit(false)
+    });
 
     let viewport = Viewport::new(None, None);
-    viewport.add(&drawing_area);
+    viewport.add(&*dep_widget);
 
     let scroll = gtk::ScrolledWindow::new(None, None);
     scroll.set_policy(PolicyType::Automatic, PolicyType::Automatic);
