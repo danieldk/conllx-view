@@ -4,8 +4,11 @@ version = "0.1.0"
 authors = ["Daniël de Kok <me@danieldk.eu>"]
 
 [dependencies]
+cairo-rs = "0.3"
 conllx = "0.9"
 dot = "0.1"
 getopts = "0.2"
+gtk = "0.3"
 petgraph = "0.4"
+rsvg = "0.3"
 stdinout = "0.4"
