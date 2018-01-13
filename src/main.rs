@@ -15,7 +15,7 @@ use cairo::Context;
 use dot::render;
 use getopts::Options;
 use gtk::prelude::*;
-use gtk::DrawingArea;
+use gtk::{DrawingArea, PolicyType, Viewport};
 use rsvg::{Handle, HandleExt};
 use stdinout::{Input, OrExit};
 
@@ -98,19 +98,8 @@ fn main() {
     let svg_dims = handle.get_dimensions();
 
     // SVG drawing from rsvg-rs example.
-    drawable(500, 500, move |drawing_area, cr| {
-        let (da_width, da_height) = (
-            drawing_area.get_allocated_width(),
-            drawing_area.get_allocated_height(),
-        );
-        let (svg_width, svg_height) = (svg_dims.width, svg_dims.height);
-        let (scale_x, scale_y) = (
-            da_width as f64 / svg_width as f64,
-            da_height as f64 / svg_height as f64,
-        );
-        let scale = if scale_x < scale_y { scale_x } else { scale_y };
-
-        cr.scale(scale, scale);
+    drawable(800, 600, move |drawing_area, cr| {
+        drawing_area.set_size_request(svg_dims.width, svg_dims.height);
 
         cr.paint_with_alpha(0.0);
         handle.render_cairo(&cr);
@@ -127,9 +116,18 @@ where
 {
     let window = gtk::Window::new(gtk::WindowType::Toplevel);
     window.set_title("conllx-view");
-    let drawing_area = Box::new(DrawingArea::new)();
+    window.set_border_width(10);
 
+    let drawing_area = Box::new(DrawingArea::new)();
+    drawing_area.set_size_request(100, 100);
     drawing_area.connect_draw(draw_fn);
+
+    let viewport = Viewport::new(None, None);
+    viewport.add(&drawing_area);
+
+    let scroll = gtk::ScrolledWindow::new(None, None);
+    scroll.set_policy(PolicyType::Automatic, PolicyType::Automatic);
+    scroll.add(&viewport);
 
     window.set_default_size(width, height);
 
@@ -137,6 +135,7 @@ where
         gtk::main_quit();
         Inhibit(false)
     });
-    window.add(&drawing_area);
+
+    window.add(&scroll);
     window.show_all();
 }
