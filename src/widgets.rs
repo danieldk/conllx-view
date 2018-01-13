@@ -86,19 +86,11 @@ impl DependencyTreeWidget {
 
             let handle = handle.as_ref().unwrap();
 
-            let mut scale = scale_clone.borrow_mut();
+            let scale = *scale_clone
+                .borrow_mut()
+                .get_or_insert(compute_scale(drawing_area, handle));
+
             let svg_dims = handle.get_dimensions();
-            if scale.is_none() {
-                let da_width = drawing_area.get_allocated_width();
-                let da_height = drawing_area.get_allocated_height();
-
-                let scale_x = da_width as f64 / svg_dims.width as f64;
-                let scale_y = da_height as f64 / svg_dims.height as f64;
-
-                *scale = Some(scale_x.min(scale_y));
-            }
-
-            let scale = scale.unwrap();
 
             drawing_area.set_size_request(
                 (svg_dims.width as f64 * scale).ceil() as i32,
@@ -124,4 +116,16 @@ impl DependencyTreeWidget {
         let mut opt_scale = self.scale.borrow_mut();
         *opt_scale = opt_scale.map(|scale| scale * 0.90);
     }
+}
+
+pub fn compute_scale(drawing_area: &DrawingArea, handle: &Handle) -> f64 {
+    let svg_dims = handle.get_dimensions();
+
+    let da_width = drawing_area.get_allocated_width();
+    let da_height = drawing_area.get_allocated_height();
+
+    let scale_x = da_width as f64 / svg_dims.width as f64;
+    let scale_y = da_height as f64 / svg_dims.height as f64;
+
+    scale_x.min(scale_y)
 }
