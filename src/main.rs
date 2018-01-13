@@ -7,9 +7,11 @@ extern crate petgraph;
 extern crate rsvg;
 extern crate stdinout;
 
+use std::cell::RefCell;
 use std::env::args;
 use std::io::{Read, Write};
 use std::process::{self, Command, Stdio};
+use std::rc::Rc;
 
 use cairo::Context;
 use dot::render;
@@ -54,6 +56,11 @@ fn dot_to_svg(dot: &[u8]) -> String {
     svg
 }
 
+struct SVGTree {
+    handle: Handle,
+    scale: Option<f64>,
+}
+
 fn main() {
     let args: Vec<String> = args().collect();
     let program = args[0].clone();
@@ -94,15 +101,32 @@ fn main() {
     gtk::init().or_exit("Failed to initialize GTK", 1);
 
     // FIXME: should not terminate the viewer.
-    let handle = Handle::new_from_data(svg.as_bytes()).or_exit("Error parsing SVG", 1);
-    let svg_dims = handle.get_dimensions();
+    let svg_tree = Rc::new(RefCell::new(SVGTree{handle: Handle::new_from_data(svg.as_bytes()).or_exit("Error parsing SVG", 1), scale: None}));
+    let svg_tree_clone = svg_tree.clone();
 
     // SVG drawing from rsvg-rs example.
     drawable(800, 600, move |drawing_area, cr| {
-        drawing_area.set_size_request(svg_dims.width, svg_dims.height);
+        let mut svg_tree = svg_tree_clone.borrow_mut();
+        let svg_dims = svg_tree.handle.get_dimensions();
+
+        if svg_tree.scale.is_none() {
+            let da_width = drawing_area.get_allocated_width();
+            let da_height = drawing_area.get_allocated_height();
+
+            let scale_x = da_width as f64 / svg_dims.width as f64;
+            let scale_y = da_height as f64 / svg_dims.height as f64;
+
+            svg_tree.scale = Some(scale_x.min(scale_y));
+        }
+
+        let scale = svg_tree.scale.unwrap();
+
+        cr.scale(scale, scale);
+
+        drawing_area.set_size_request((svg_dims.width as f64 * scale).ceil() as i32, (svg_dims.height as f64 * scale).ceil() as i32);
 
         cr.paint_with_alpha(0.0);
-        handle.render_cairo(&cr);
+        svg_tree.handle.render_cairo(&cr);
 
         Inhibit(false)
     });
