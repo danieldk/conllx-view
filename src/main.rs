@@ -1,6 +1,8 @@
 extern crate cairo;
 extern crate conllx;
 extern crate dot;
+#[macro_use]
+extern crate error_chain;
 extern crate getopts;
 extern crate gtk;
 extern crate petgraph;
@@ -16,6 +18,8 @@ use getopts::Options;
 use gtk::prelude::*;
 use gtk::{PolicyType, Viewport};
 use stdinout::{Input, OrExit};
+
+mod error;
 
 mod graph;
 use graph::{sentence_to_graph, DependencyGraph};
@@ -77,7 +81,10 @@ pub fn create_gui(width: i32, height: i32, graph: &DependencyGraph) {
     window.set_border_width(10);
 
     let dep_widget = Rc::new(RefCell::new(DependencyTreeWidget::new()));
-    dep_widget.borrow_mut().set_graph(graph);
+    dep_widget
+        .borrow_mut()
+        .set_graph(graph)
+        .or_exit("Error setting graph", 1);
     let dep_widget_clone = dep_widget.clone();
 
     window.connect_key_press_event(move |_, key_event| {

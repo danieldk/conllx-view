@@ -17,11 +17,11 @@ use dot::render;
 use gtk::prelude::*;
 use gtk::DrawingArea;
 use rsvg::{Handle, HandleExt};
-use stdinout::OrExit;
 
+use error::Result;
 use graph::DependencyGraph;
 
-fn dot_to_svg(dot: &[u8]) -> String {
+fn dot_to_svg(dot: &[u8]) -> Result<String> {
     // FIXME: bind against C library?
 
     // Spawn Graphviz dot for rendering SVG (Fixme: bind against C library?).
@@ -29,23 +29,14 @@ fn dot_to_svg(dot: &[u8]) -> String {
         .arg("-Tsvg")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .spawn()
-        .or_exit("Couldn't spawn dot", 1);
+        .spawn()?;
 
-    process
-        .stdin
-        .unwrap()
-        .write_all(dot)
-        .or_exit("Cannot write to dot stdin", 1);
+    process.stdin.unwrap().write_all(dot)?;
 
     let mut svg = String::new();
-    process
-        .stdout
-        .unwrap()
-        .read_to_string(&mut svg)
-        .or_exit("Cannot read dot stdout", 1);
+    process.stdout.unwrap().read_to_string(&mut svg)?;
 
-    svg
+    Ok(svg)
 }
 
 pub struct DependencyTreeWidget {
@@ -75,14 +66,13 @@ impl DependencyTreeWidget {
         &self.drawing_area
     }
 
-    pub fn set_graph(&mut self, graph: &DependencyGraph) {
+    pub fn set_graph(&mut self, graph: &DependencyGraph) -> Result<()> {
         let mut dot = Vec::new();
-        render(graph, &mut dot).or_exit("Error writing dot output", 1);
-        let svg = dot_to_svg(&dot);
+        render(graph, &mut dot)?;
+        let svg = dot_to_svg(&dot)?;
 
         let handle_clone = self.handle.clone();
-        *handle_clone.borrow_mut() =
-            Some(Handle::new_from_data(svg.as_bytes()).or_exit("Error parsing SVG", 1));
+        *handle_clone.borrow_mut() = Some(Handle::new_from_data(svg.as_bytes())?);
 
         let scale_clone = self.scale.clone();
         *scale_clone.borrow_mut() = None;
@@ -121,6 +111,8 @@ impl DependencyTreeWidget {
 
             Inhibit(false)
         });
+
+        Ok(())
     }
 
     pub fn zoom_in(&mut self) {
