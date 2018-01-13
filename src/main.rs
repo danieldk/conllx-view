@@ -24,6 +24,9 @@ use stdinout::{Input, OrExit};
 mod graph;
 use graph::{sentence_to_graph, DependencyGraph};
 
+const ZOOM_IN_KEY: u32 = 61;
+const ZOOM_OUT_KEY: u32 = 45;
+
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options] EXPR [INPUT_FILE]", program);
     print!("{}", opts.usage(&brief));
@@ -79,6 +82,10 @@ impl DependencyTreeWidget {
         }
     }
 
+    pub fn inner(&self) -> &DrawingArea {
+        &self.drawing_area
+    }
+
     pub fn set_graph(&mut self, graph: &DependencyGraph) {
         let mut dot = Vec::new();
         render(graph, &mut dot).or_exit("Error writing dot output", 1);
@@ -125,6 +132,16 @@ impl DependencyTreeWidget {
 
             Inhibit(false)
         });
+    }
+
+    pub fn zoom_in(&mut self) {
+        let mut opt_scale = self.scale.borrow_mut();
+        *opt_scale = opt_scale.map(|scale| scale / 0.90);
+    }
+
+    pub fn zoom_out(&mut self) {
+        let mut opt_scale = self.scale.borrow_mut();
+        *opt_scale = opt_scale.map(|scale| scale * 0.90);
     }
 }
 
@@ -173,16 +190,30 @@ pub fn create_gui(width: i32, height: i32, graph: &DependencyGraph) {
     window.set_title("conllx-view");
     window.set_border_width(10);
 
-    let mut dep_widget = DependencyTreeWidget::new();
-    dep_widget.set_graph(graph);
+    let dep_widget = Rc::new(RefCell::new(DependencyTreeWidget::new()));
+    dep_widget.borrow_mut().set_graph(graph);
+    let dep_widget_clone = dep_widget.clone();
 
-    window.connect_key_press_event(|_, key_event| {
+    window.connect_key_press_event(move |_, key_event| {
         println!("key: {}", key_event.get_keyval());
+        match key_event.get_keyval() {
+            ZOOM_IN_KEY => {
+                let mut widget_mut = dep_widget_clone.borrow_mut();
+                widget_mut.zoom_in();
+                widget_mut.queue_draw();
+            },
+            ZOOM_OUT_KEY => {
+                let mut widget_mut = dep_widget_clone.borrow_mut();
+                widget_mut.zoom_out();
+                widget_mut.queue_draw();
+            }
+            _ => (),
+        }
         Inhibit(false)
     });
 
     let viewport = Viewport::new(None, None);
-    viewport.add(&*dep_widget);
+    viewport.add(dep_widget.borrow().inner());
 
     let scroll = gtk::ScrolledWindow::new(None, None);
     scroll.set_policy(PolicyType::Automatic, PolicyType::Automatic);
