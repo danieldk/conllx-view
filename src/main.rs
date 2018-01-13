@@ -5,8 +5,8 @@ extern crate petgraph;
 extern crate stdinout;
 
 use std::env::args;
-use std::io;
-use std::process;
+use std::io::{Read, Write};
+use std::process::{self, Command, Stdio};
 
 use dot::render;
 use getopts::Options;
@@ -18,6 +18,25 @@ use graph::sentence_to_graph;
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options] EXPR [INPUT_FILE]", program);
     print!("{}", opts.usage(&brief));
+}
+
+fn dot_to_svg(dot: &[u8]) -> String {
+    // FIXME: bind against C library?
+
+    // Spawn Graphviz dot for rendering SVG (Fixme: bind against C library?).
+    let process = Command::new("dot")
+        .arg("-Tsvg")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .or_exit("Couldn't spawn dot", 1);
+
+    process.stdin.unwrap().write_all(dot).or_exit("Cannot write to dot stdin", 1);
+
+    let mut svg = String::new();
+    process.stdout.unwrap().read_to_string(&mut svg).or_exit("Cannot read dot stdout", 1);
+
+    svg
 }
 
 fn main() {
@@ -56,9 +75,11 @@ fn main() {
 
         //println!("{:?}", Dot::with_config(&simplified_graph, &[]));
 
-        let stdout = io::stdout();
-        let mut handle = stdout.lock();
-        render(&graph, &mut handle).or_exit("Error writing dot output", 1);
+        let mut dot = Vec::new();
+        render(&graph, &mut dot).or_exit("Error writing dot output", 1);
+        let svg = dot_to_svg(&dot);
+
+        println!("{}", svg);
 
         return;
     }
