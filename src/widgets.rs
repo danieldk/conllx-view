@@ -1,12 +1,3 @@
-extern crate cairo;
-extern crate conllx;
-extern crate dot;
-extern crate getopts;
-extern crate gtk;
-extern crate petgraph;
-extern crate rsvg;
-extern crate stdinout;
-
 use std::cell::RefCell;
 use std::io::{Read, Write};
 use std::ops::Deref;
@@ -86,20 +77,26 @@ impl DependencyTreeWidget {
 
             let handle = handle.as_ref().unwrap();
 
+            // Translate to center SVG.
+            let (x_offset, y_offset) = compute_centering_offset(drawing_area, handle);
+            cr.translate(x_offset, y_offset);
+
+            // Scale the surface.
             let scale = *scale_clone
                 .borrow_mut()
                 .get_or_insert(compute_scale(drawing_area, handle));
+            cr.scale(scale, scale);
 
+            // Paint the SVG.
+            cr.paint_with_alpha(0.0);
+            handle.render_cairo(&cr);
+
+            // Set size request, this is required for computing the scroll bars.
             let svg_dims = handle.get_dimensions();
-
             drawing_area.set_size_request(
                 (svg_dims.width as f64 * scale).ceil() as i32,
                 (svg_dims.height as f64 * scale).ceil() as i32,
             );
-
-            cr.scale(scale, scale);
-            cr.paint_with_alpha(0.0);
-            handle.render_cairo(&cr);
 
             Inhibit(false)
         });
@@ -128,4 +125,18 @@ pub fn compute_scale(drawing_area: &DrawingArea, handle: &Handle) -> f64 {
     let scale_y = da_height as f64 / svg_dims.height as f64;
 
     scale_x.min(scale_y)
+}
+
+/// Computes the offset/translation for centering the SVG in the drawing area.
+fn compute_centering_offset(drawing_area: &DrawingArea, handle: &Handle) -> (f64, f64) {
+    let svg_dims = handle.get_dimensions();
+    let scale = compute_scale(drawing_area, handle);
+
+    let da_width = drawing_area.get_allocated_width();
+    let da_height = drawing_area.get_allocated_height();
+
+    (
+        da_width as f64 * 0.5 - svg_dims.width as f64 * scale * 0.5,
+        da_height as f64 * 0.5 - svg_dims.height as f64 * scale * 0.5,
+    )
 }
