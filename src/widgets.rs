@@ -1,39 +1,22 @@
 use std::cell::RefCell;
-use std::io::{Read, Write};
+use std::mem;
 use std::ops::Deref;
-use std::process::{Command, Stdio};
 use std::rc::Rc;
 
-use dot::render;
+use glib::SignalHandlerId;
 use gtk::prelude::*;
 use gtk::DrawingArea;
 use rsvg::{Handle, HandleExt};
 
 use error::Result;
-use graph::DependencyGraph;
-
-fn dot_to_svg(dot: &[u8]) -> Result<String> {
-    // FIXME: bind against C library?
-
-    // Spawn Graphviz dot for rendering SVG (Fixme: bind against C library?).
-    let process = Command::new("dot")
-        .arg("-Tsvg")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()?;
-
-    process.stdin.unwrap().write_all(dot)?;
-
-    let mut svg = String::new();
-    process.stdout.unwrap().read_to_string(&mut svg)?;
-
-    Ok(svg)
-}
+use model::TreebankModel;
 
 pub struct DependencyTreeWidget {
     drawing_area: DrawingArea,
-    handle: Rc<RefCell<Option<Handle>>>,
+    draw_handler: Option<SignalHandlerId>,
     scale: Rc<RefCell<Option<f64>>>,
+    treebank_model: TreebankModel,
+    treebank_idx: usize,
 }
 
 impl Deref for DependencyTreeWidget {
@@ -45,11 +28,13 @@ impl Deref for DependencyTreeWidget {
 }
 
 impl DependencyTreeWidget {
-    pub fn new() -> Self {
+    pub fn new(treebank_model: TreebankModel) -> Self {
         DependencyTreeWidget {
             drawing_area: DrawingArea::new(),
-            handle: Rc::new(RefCell::new(None)),
+            draw_handler: None,
             scale: Rc::new(RefCell::new(None)),
+            treebank_model,
+            treebank_idx: 0,
         }
     }
 
@@ -57,35 +42,68 @@ impl DependencyTreeWidget {
         &self.drawing_area
     }
 
-    pub fn set_graph(&mut self, graph: &DependencyGraph) -> Result<()> {
-        let mut dot = Vec::new();
-        render(graph, &mut dot)?;
-        let svg = dot_to_svg(&dot)?;
+    pub fn next(&mut self) -> Result<()> {
+        if self.treebank_idx == self.treebank_model.len() - 1 {
+            return Ok(());
+        }
 
-        let handle = &self.handle;
-        let scale = &self.scale;
+        self.treebank_idx += 1;
+        *self.scale.borrow_mut() = None;
 
-        *handle.borrow_mut() = Some(Handle::new_from_data(svg.as_bytes())?);
+        self.show_graph()
+    }
+
+    pub fn previous(&mut self) -> Result<()> {
+        if self.treebank_idx == 0 {
+            return Ok(());
+        }
+
+        self.treebank_idx -= 1;
+        *self.scale.borrow_mut() = None;
+
+        self.show_graph()
+    }
+
+    pub fn show_graph(&mut self) -> Result<()> {
+        // FIXME: what to do with an empty treebank?
+        assert!(
+            self.treebank_idx < self.treebank_model.len(),
+            "Widget has invalid treebank index"
+        );
+
+        let handle = self.treebank_model.handle(self.treebank_idx)?;
+
+        let scale = self.scale.clone();
         *scale.borrow_mut() = None;
 
-        self.drawing_area
-            .connect_draw(clone!(handle, scale => move |drawing_area, cr| {
-            let handle = handle.borrow();
-            let handle = ok_or!(handle.as_ref(), return Inhibit(false));
+        let mut draw_handler = None;
+        mem::swap(&mut draw_handler, &mut self.draw_handler);
+        if let Some(draw_handler) = draw_handler {
+            self.drawing_area.disconnect(draw_handler);
+        }
+
+        self.draw_handler = Some(self.drawing_area.connect_draw(move |drawing_area, cr| {
+            // White canvas.
+            cr.set_source_rgba(1.0, 1.0, 1.0, 1.0);
+            cr.paint();
+
+            cr.save();
 
             // Translate to center SVG.
-            let (x_offset, y_offset) = compute_centering_offset(drawing_area, handle);
+            let (x_offset, y_offset) = compute_centering_offset(drawing_area, &handle);
             cr.translate(x_offset, y_offset);
 
             // Scale the surface.
             let scale = *scale
                 .borrow_mut()
-                .get_or_insert(compute_scale(drawing_area, handle));
+                .get_or_insert(compute_scale(drawing_area, &handle));
             cr.scale(scale, scale);
 
             // Paint the SVG.
             cr.paint_with_alpha(0.0);
             handle.render_cairo(&cr);
+
+            cr.restore();
 
             // Set size request, this is required for computing the scroll bars.
             let svg_dims = handle.get_dimensions();
@@ -113,12 +131,10 @@ impl DependencyTreeWidget {
 
 pub fn compute_scale(drawing_area: &DrawingArea, handle: &Handle) -> f64 {
     let svg_dims = handle.get_dimensions();
+    let rect = drawing_area.get_allocation();
 
-    let da_width = drawing_area.get_allocated_width();
-    let da_height = drawing_area.get_allocated_height();
-
-    let scale_x = da_width as f64 / svg_dims.width as f64;
-    let scale_y = da_height as f64 / svg_dims.height as f64;
+    let scale_x = rect.width as f64 / svg_dims.width as f64;
+    let scale_y = rect.height as f64 / svg_dims.height as f64;
 
     scale_x.min(scale_y)
 }
@@ -128,11 +144,10 @@ fn compute_centering_offset(drawing_area: &DrawingArea, handle: &Handle) -> (f64
     let svg_dims = handle.get_dimensions();
     let scale = compute_scale(drawing_area, handle);
 
-    let da_width = drawing_area.get_allocated_width();
-    let da_height = drawing_area.get_allocated_height();
+    let rect = drawing_area.get_allocation();
 
     (
-        da_width as f64 * 0.5 - svg_dims.width as f64 * scale * 0.5,
-        da_height as f64 * 0.5 - svg_dims.height as f64 * scale * 0.5,
+        rect.width as f64 * 0.5 - svg_dims.width as f64 * scale * 0.5,
+        rect.height as f64 * 0.5 - svg_dims.height as f64 * scale * 0.5,
     )
 }

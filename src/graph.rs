@@ -5,17 +5,18 @@ use dot::{Edges, GraphWalk, Id, LabelText, Labeller, Nodes};
 use petgraph::{Directed, Graph};
 use petgraph::graph::{EdgeIndex, NodeIndex};
 
-#[derive(Debug)]
-pub struct DependencyNode<'a> {
-    pub token: &'a Token,
+#[derive(Clone, Debug)]
+pub struct DependencyNode {
+    pub token: Token,
     pub offset: usize,
 }
 
-pub struct DependencyGraph<'a>(pub Graph<DependencyNode<'a>, &'a str, Directed>);
+#[derive(Clone)]
+pub struct DependencyGraph(pub Graph<DependencyNode, String, Directed>);
 
-impl<'a> Labeller<'a, NodeIndex, EdgeIndex> for DependencyGraph<'a> {
+impl<'a> Labeller<'a, NodeIndex, EdgeIndex> for DependencyGraph {
     fn edge_label(&'a self, e: &EdgeIndex) -> LabelText<'a> {
-        LabelText::LabelStr(Cow::Borrowed(self.0[*e]))
+        LabelText::LabelStr(Cow::Borrowed(&self.0[*e]))
     }
 
     fn graph_id(&'a self) -> Id<'a> {
@@ -35,7 +36,7 @@ impl<'a> Labeller<'a, NodeIndex, EdgeIndex> for DependencyGraph<'a> {
     }
 }
 
-impl<'a> GraphWalk<'a, NodeIndex, EdgeIndex> for DependencyGraph<'a> {
+impl<'a> GraphWalk<'a, NodeIndex, EdgeIndex> for DependencyGraph {
     fn nodes(&self) -> Nodes<'a, NodeIndex> {
         let mut indices = Vec::new();
 
@@ -65,31 +66,39 @@ impl<'a> GraphWalk<'a, NodeIndex, EdgeIndex> for DependencyGraph<'a> {
     }
 }
 
-pub fn sentence_to_graph(sentence: &Sentence, projective: bool) -> DependencyGraph {
+pub fn sentence_to_graph(sentence: Sentence, projective: bool) -> DependencyGraph {
     let mut g = Graph::new();
 
     let nodes: Vec<_> = sentence
-        .iter()
+        .into_iter()
         .enumerate()
         .map(|(offset, token)| {
             g.add_node(DependencyNode {
-                token: token,
+                token: token.clone(),
                 offset: offset,
             })
         })
         .collect();
 
-    for (idx, token) in sentence.iter().enumerate() {
+    for (idx, node_idx) in nodes.iter().enumerate() {
         let head = if projective {
-            token.p_head()
+            g[*node_idx].token.p_head()
         } else {
-            token.head()
+            g[*node_idx].token.head()
         };
 
         let rel = if projective {
-            token.p_head_rel().expect("Dependency relation missing")
+            g[*node_idx]
+                .token
+                .p_head_rel()
+                .expect("Dependency relation missing")
+                .to_owned()
         } else {
-            token.head_rel().expect("Dependency relation missing")
+            g[*node_idx]
+                .token
+                .head_rel()
+                .expect("Dependency relation missing")
+                .to_owned()
         };
 
         let head = head.expect("Token does not have a head");

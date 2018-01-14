@@ -4,6 +4,7 @@ extern crate dot;
 #[macro_use]
 extern crate error_chain;
 extern crate getopts;
+extern crate glib;
 extern crate gtk;
 extern crate petgraph;
 extern crate rsvg;
@@ -22,14 +23,19 @@ use stdinout::{Input, OrExit};
 mod error;
 
 mod graph;
-use graph::{sentence_to_graph, DependencyGraph};
+use graph::sentence_to_graph;
 
 #[macro_use]
 mod macros;
 
+mod model;
+use model::TreebankModel;
+
 mod widgets;
 use widgets::DependencyTreeWidget;
 
+const NEXT_KEY: u32 = 110;
+const PREVIOUS_KEY: u32 = 112;
 const ZOOM_IN_KEY: u32 = 61;
 const ZOOM_OUT_KEY: u32 = 45;
 
@@ -66,28 +72,30 @@ fn main() {
     let input = Input::from(matches.free.get(0));
     let reader = conllx::Reader::new(input.buf_read().or_exit("Cannot open input for reading", 1));
 
-    let sentence = reader.into_iter().next().unwrap();
-    let sentence = sentence.or_exit("Cannot read sentence", 1);
+    let dep_graph_iter = reader.into_iter().map(|sent| {
+        let sent = sent.or_exit("Cannot read sentence", 1);
+        sentence_to_graph(sent, false)
+    });
 
-    let graph = sentence_to_graph(&sentence, false);
+    let treebank_model = TreebankModel::from_iter(dep_graph_iter);
 
     gtk::init().or_exit("Failed to initialize GTK", 1);
 
-    create_gui(800, 600, &graph);
+    create_gui(800, 600, treebank_model);
 
     gtk::main();
 }
 
-pub fn create_gui(width: i32, height: i32, graph: &DependencyGraph) {
+pub fn create_gui(width: i32, height: i32, treebank_model: TreebankModel) {
     let window = gtk::Window::new(gtk::WindowType::Toplevel);
     window.set_title("conllx-view");
     window.set_border_width(10);
 
-    let dep_widget = Rc::new(RefCell::new(DependencyTreeWidget::new()));
+    let dep_widget = Rc::new(RefCell::new(DependencyTreeWidget::new(treebank_model)));
     dep_widget
         .borrow_mut()
-        .set_graph(graph)
-        .or_exit("Error setting graph", 1);
+        .show_graph()
+        .or_exit("Error showing graph", 1);
 
     let scroll = gtk::ScrolledWindow::new(None, None);
     scroll.set_policy(PolicyType::Automatic, PolicyType::Automatic);
@@ -96,6 +104,16 @@ pub fn create_gui(width: i32, height: i32, graph: &DependencyGraph) {
     window.connect_key_press_event(clone!(dep_widget => move |_, key_event| {
         println!("key: {}", key_event.get_keyval());
         match key_event.get_keyval() {
+            NEXT_KEY => {
+                let mut widget_mut = dep_widget.borrow_mut();
+                widget_mut.next();
+                widget_mut.queue_draw();
+            }
+            PREVIOUS_KEY => {
+                let mut widget_mut = dep_widget.borrow_mut();
+                widget_mut.previous();
+                widget_mut.queue_draw();
+            }
             ZOOM_IN_KEY => {
                 let mut widget_mut = dep_widget.borrow_mut();
                 widget_mut.zoom_in();
