@@ -1,6 +1,5 @@
 extern crate cairo;
 extern crate conllx;
-extern crate dot;
 #[macro_use]
 extern crate error_chain;
 extern crate getopts;
