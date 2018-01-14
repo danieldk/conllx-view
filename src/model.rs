@@ -33,7 +33,7 @@ impl TreebankModel {
 
     fn svg(&self, idx: usize) -> Result<String> {
         let dot = graph_to_dot(&self.treebank[idx])?;
-        dot_to_svg(dot.as_bytes())
+        dot_to_svg(&dot)
     }
 }
 
@@ -57,6 +57,7 @@ fn graph_to_dot(graph: &DependencyGraph) -> Result<String> {
     let mut dot = String::new();
 
     dot.push_str("digraph deptree {\n");
+    dot.push_str(r#"graph [charset = "UTF-8"]"#);
     dot.push_str(r#"node [shape=plaintext, height=0, width=0, fontsize=12, fontname="Helvetica"]"#);
 
     for node_idx in graph.0.node_indices() {
@@ -88,7 +89,7 @@ fn graph_to_dot(graph: &DependencyGraph) -> Result<String> {
     Ok(dot)
 }
 
-fn dot_to_svg(dot: &[u8]) -> Result<String> {
+fn dot_to_svg(dot: &str) -> Result<String> {
     // FIXME: bind against C library?
 
     // Spawn Graphviz dot for rendering SVG (Fixme: bind against C library?).
@@ -98,7 +99,7 @@ fn dot_to_svg(dot: &[u8]) -> Result<String> {
         .stdout(Stdio::piped())
         .spawn()?;
 
-    process.stdin.unwrap().write_all(dot)?;
+    process.stdin.unwrap().write_all(dot.as_bytes())?;
 
     let mut svg = String::new();
     process.stdout.unwrap().read_to_string(&mut svg)?;
