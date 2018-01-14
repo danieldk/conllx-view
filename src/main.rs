@@ -16,7 +16,7 @@ use std::rc::Rc;
 
 use getopts::Options;
 use gtk::prelude::*;
-use gtk::{PolicyType, Viewport};
+use gtk::PolicyType;
 use stdinout::{Input, OrExit};
 
 mod error;
@@ -87,6 +87,10 @@ pub fn create_gui(width: i32, height: i32, graph: &DependencyGraph) {
         .or_exit("Error setting graph", 1);
     let dep_widget_clone = dep_widget.clone();
 
+    let scroll = gtk::ScrolledWindow::new(None, None);
+    scroll.set_policy(PolicyType::Automatic, PolicyType::Automatic);
+    scroll.add(dep_widget.borrow().inner());
+
     window.connect_key_press_event(move |_, key_event| {
         println!("key: {}", key_event.get_keyval());
         match key_event.get_keyval() {
@@ -104,13 +108,6 @@ pub fn create_gui(width: i32, height: i32, graph: &DependencyGraph) {
         }
         Inhibit(false)
     });
-
-    let viewport = Viewport::new(None, None);
-    viewport.add(dep_widget.borrow().inner());
-
-    let scroll = gtk::ScrolledWindow::new(None, None);
-    scroll.set_policy(PolicyType::Automatic, PolicyType::Automatic);
-    scroll.add(&viewport);
 
     window.set_default_size(width, height);
 
