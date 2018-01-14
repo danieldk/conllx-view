@@ -24,6 +24,9 @@ mod error;
 mod graph;
 use graph::{sentence_to_graph, DependencyGraph};
 
+#[macro_use]
+mod macros;
+
 mod widgets;
 use widgets::DependencyTreeWidget;
 
@@ -85,29 +88,28 @@ pub fn create_gui(width: i32, height: i32, graph: &DependencyGraph) {
         .borrow_mut()
         .set_graph(graph)
         .or_exit("Error setting graph", 1);
-    let dep_widget_clone = dep_widget.clone();
 
     let scroll = gtk::ScrolledWindow::new(None, None);
     scroll.set_policy(PolicyType::Automatic, PolicyType::Automatic);
     scroll.add(dep_widget.borrow().inner());
 
-    window.connect_key_press_event(move |_, key_event| {
+    window.connect_key_press_event(clone!(dep_widget => move |_, key_event| {
         println!("key: {}", key_event.get_keyval());
         match key_event.get_keyval() {
             ZOOM_IN_KEY => {
-                let mut widget_mut = dep_widget_clone.borrow_mut();
+                let mut widget_mut = dep_widget.borrow_mut();
                 widget_mut.zoom_in();
                 widget_mut.queue_draw();
             }
             ZOOM_OUT_KEY => {
-                let mut widget_mut = dep_widget_clone.borrow_mut();
+                let mut widget_mut = dep_widget.borrow_mut();
                 widget_mut.zoom_out();
                 widget_mut.queue_draw();
             }
             _ => (),
         }
         Inhibit(false)
-    });
+    }));
 
     window.set_default_size(width, height);
 

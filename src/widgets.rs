@@ -62,27 +62,23 @@ impl DependencyTreeWidget {
         render(graph, &mut dot)?;
         let svg = dot_to_svg(&dot)?;
 
-        let handle_clone = self.handle.clone();
-        *handle_clone.borrow_mut() = Some(Handle::new_from_data(svg.as_bytes())?);
+        let handle = &self.handle;
+        let scale = &self.scale;
 
-        let scale_clone = self.scale.clone();
-        *scale_clone.borrow_mut() = None;
+        *handle.borrow_mut() = Some(Handle::new_from_data(svg.as_bytes())?);
+        *scale.borrow_mut() = None;
 
-        self.drawing_area.connect_draw(move |drawing_area, cr| {
-            let handle = handle_clone.borrow();
-
-            if handle.is_none() {
-                return Inhibit(false);
-            }
-
-            let handle = handle.as_ref().unwrap();
+        self.drawing_area
+            .connect_draw(clone!(handle, scale => move |drawing_area, cr| {
+            let handle = handle.borrow();
+            let handle = ok_or!(handle.as_ref(), return Inhibit(false));
 
             // Translate to center SVG.
             let (x_offset, y_offset) = compute_centering_offset(drawing_area, handle);
             cr.translate(x_offset, y_offset);
 
             // Scale the surface.
-            let scale = *scale_clone
+            let scale = *scale
                 .borrow_mut()
                 .get_or_insert(compute_scale(drawing_area, handle));
             cr.scale(scale, scale);
@@ -99,7 +95,7 @@ impl DependencyTreeWidget {
             );
 
             Inhibit(false)
-        });
+        }));
 
         Ok(())
     }
