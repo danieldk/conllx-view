@@ -85,7 +85,7 @@ fn main() {
     gtk::main();
 }
 
-pub fn create_gui(width: i32, height: i32, treebank_model: TreebankModel) {
+fn create_gui(width: i32, height: i32, treebank_model: TreebankModel) {
     let window = gtk::Window::new(gtk::WindowType::Toplevel);
     window.set_title("conllx-view");
     window.set_border_width(10);
@@ -96,7 +96,21 @@ pub fn create_gui(width: i32, height: i32, treebank_model: TreebankModel) {
     scroll.set_policy(PolicyType::Automatic, PolicyType::Automatic);
     scroll.add(dep_widget.borrow().inner());
 
-    window.connect_key_press_event(clone!(dep_widget => move |_, key_event| {
+    setup_key_event_handling(&window, dep_widget.clone());
+
+    window.set_default_size(width, height);
+
+    window.connect_delete_event(|_, _| {
+        gtk::main_quit();
+        Inhibit(false)
+    });
+
+    window.add(&scroll);
+    window.show_all();
+}
+
+fn setup_key_event_handling(window: &gtk::Window, dep_widget: Rc<RefCell<DependencyTreeWidget>>) {
+    window.connect_key_press_event(move |_, key_event| {
         println!("key: {}", key_event.get_keyval());
         match key_event.get_keyval() {
             NEXT_KEY => {
@@ -125,15 +139,5 @@ pub fn create_gui(width: i32, height: i32, treebank_model: TreebankModel) {
             _ => (),
         }
         Inhibit(false)
-    }));
-
-    window.set_default_size(width, height);
-
-    window.connect_delete_event(|_, _| {
-        gtk::main_quit();
-        Inhibit(false)
     });
-
-    window.add(&scroll);
-    window.show_all();
 }
