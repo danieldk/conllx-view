@@ -30,7 +30,7 @@ mod model;
 use model::TreebankModel;
 
 mod widgets;
-use widgets::DependencyTreeWidget;
+use widgets::{DependencyTreeWidget, SentenceWidget};
 
 const NEXT_KEY: u32 = 110;
 const PREVIOUS_KEY: u32 = 112;
@@ -86,17 +86,26 @@ fn main() {
 }
 
 fn create_gui(width: i32, height: i32, treebank_model: TreebankModel) {
-    let window = gtk::Window::new(gtk::WindowType::Toplevel);
-    window.set_title("conllx-view");
-    window.set_border_width(10);
+    let treebank_model = Rc::new(RefCell::new(treebank_model));
 
-    let dep_widget = Rc::new(RefCell::new(DependencyTreeWidget::new(treebank_model)));
-
+    let dep_widget = Rc::new(RefCell::new(DependencyTreeWidget::new(
+        treebank_model.clone(),
+    )));
     let scroll = gtk::ScrolledWindow::new(None, None);
     scroll.set_policy(PolicyType::Automatic, PolicyType::Automatic);
     scroll.add(dep_widget.borrow().inner());
 
-    setup_key_event_handling(&window, dep_widget.clone());
+    let sent_widget = Rc::new(RefCell::new(SentenceWidget::new(treebank_model)));
+
+    let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    vbox.pack_start(&scroll, true, true, 0);
+    vbox.pack_start(sent_widget.borrow().inner(), false, false, 0);
+
+    let window = gtk::Window::new(gtk::WindowType::Toplevel);
+    window.set_title("conllx-view");
+    window.set_border_width(10);
+
+    setup_key_event_handling(&window, dep_widget.clone(), sent_widget);
 
     window.set_default_size(width, height);
 
@@ -105,22 +114,28 @@ fn create_gui(width: i32, height: i32, treebank_model: TreebankModel) {
         Inhibit(false)
     });
 
-    window.add(&scroll);
+    window.add(&vbox);
     window.show_all();
 }
 
-fn setup_key_event_handling(window: &gtk::Window, dep_widget: Rc<RefCell<DependencyTreeWidget>>) {
+fn setup_key_event_handling(
+    window: &gtk::Window,
+    dep_widget: Rc<RefCell<DependencyTreeWidget>>,
+    sent_widget: Rc<RefCell<SentenceWidget>>,
+) {
     window.connect_key_press_event(move |_, key_event| {
         println!("key: {}", key_event.get_keyval());
         match key_event.get_keyval() {
             NEXT_KEY => {
                 let mut widget_mut = dep_widget.borrow_mut();
                 widget_mut.next();
+                sent_widget.borrow_mut().next();
                 widget_mut.queue_draw();
             }
             PREVIOUS_KEY => {
                 let mut widget_mut = dep_widget.borrow_mut();
                 widget_mut.previous();
+                sent_widget.borrow_mut().previous();
                 widget_mut.queue_draw();
             }
             QUIT_KEY => {

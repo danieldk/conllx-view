@@ -3,7 +3,7 @@ use std::ops::Deref;
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use gtk::DrawingArea;
+use gtk::{DrawingArea, TextView};
 use rsvg::{Handle, HandleExt};
 
 use model::TreebankModel;
@@ -24,11 +24,11 @@ impl Deref for DependencyTreeWidget {
 }
 
 impl DependencyTreeWidget {
-    pub fn new(treebank_model: TreebankModel) -> Self {
+    pub fn new(treebank_model: Rc<RefCell<TreebankModel>>) -> Self {
         let mut widget = DependencyTreeWidget {
             drawing_area: DrawingArea::new(),
             scale: Rc::new(RefCell::new(None)),
-            treebank_model: Rc::new(RefCell::new(treebank_model)),
+            treebank_model,
             treebank_idx: Rc::new(RefCell::new(0)),
         };
 
@@ -139,4 +139,65 @@ fn compute_centering_offset(drawing_area: &DrawingArea, handle: &Handle) -> (f64
         rect.width as f64 * 0.5 - svg_dims.width as f64 * scale * 0.5,
         rect.height as f64 * 0.5 - svg_dims.height as f64 * scale * 0.5,
     )
+}
+
+pub struct SentenceWidget {
+    text_view: TextView,
+    treebank_model: Rc<RefCell<TreebankModel>>,
+    treebank_idx: Rc<RefCell<usize>>,
+}
+
+impl Deref for SentenceWidget {
+    type Target = TextView;
+
+    fn deref(&self) -> &Self::Target {
+        &self.text_view
+    }
+}
+
+impl SentenceWidget {
+    pub fn new(treebank_model: Rc<RefCell<TreebankModel>>) -> Self {
+        let text_view = TextView::new();
+        text_view.set_editable(false);
+        text_view
+            .get_buffer()
+            .unwrap()
+            .set_text(&format!("Sentence {}", 0));
+
+        SentenceWidget {
+            text_view,
+            treebank_model,
+            treebank_idx: Rc::new(RefCell::new(0)),
+        }
+    }
+
+    pub fn inner(&self) -> &TextView {
+        &self.text_view
+    }
+
+    pub fn next(&mut self) {
+        if *self.treebank_idx.borrow() == self.treebank_model.borrow().len() - 1 {
+            return;
+        }
+
+        *self.treebank_idx.borrow_mut() += 1;
+
+        self.text_view
+            .get_buffer()
+            .unwrap()
+            .set_text(&format!("Sentence {}", *self.treebank_idx.borrow_mut()));
+    }
+
+    pub fn previous(&mut self) {
+        if *self.treebank_idx.borrow() == 0 {
+            return;
+        }
+
+        *self.treebank_idx.borrow_mut() -= 1;
+
+        self.text_view
+            .get_buffer()
+            .unwrap()
+            .set_text(&format!("Sentence {}", *self.treebank_idx.borrow_mut()));
+    }
 }
