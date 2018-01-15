@@ -34,6 +34,7 @@ use widgets::DependencyTreeWidget;
 
 const NEXT_KEY: u32 = 110;
 const PREVIOUS_KEY: u32 = 112;
+const QUIT_KEY: u32 = 113;
 const ZOOM_IN_KEY: u32 = 61;
 const ZOOM_OUT_KEY: u32 = 45;
 
@@ -107,6 +108,9 @@ pub fn create_gui(width: i32, height: i32, treebank_model: TreebankModel) {
                 let mut widget_mut = dep_widget.borrow_mut();
                 widget_mut.previous();
                 widget_mut.queue_draw();
+            }
+            QUIT_KEY => {
+                gtk::main_quit();
             }
             ZOOM_IN_KEY => {
                 let mut widget_mut = dep_widget.borrow_mut();
