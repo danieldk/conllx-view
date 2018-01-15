@@ -3,7 +3,6 @@ extern crate conllx;
 #[macro_use]
 extern crate error_chain;
 extern crate getopts;
-extern crate glib;
 extern crate gtk;
 extern crate petgraph;
 extern crate rsvg;
@@ -91,10 +90,6 @@ pub fn create_gui(width: i32, height: i32, treebank_model: TreebankModel) {
     window.set_border_width(10);
 
     let dep_widget = Rc::new(RefCell::new(DependencyTreeWidget::new(treebank_model)));
-    dep_widget
-        .borrow_mut()
-        .show_graph()
-        .or_exit("Error showing graph", 1);
 
     let scroll = gtk::ScrolledWindow::new(None, None);
     scroll.set_policy(PolicyType::Automatic, PolicyType::Automatic);

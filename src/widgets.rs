@@ -1,22 +1,18 @@
 use std::cell::RefCell;
-use std::mem;
 use std::ops::Deref;
 use std::rc::Rc;
 
-use glib::SignalHandlerId;
 use gtk::prelude::*;
 use gtk::DrawingArea;
 use rsvg::{Handle, HandleExt};
 
-use error::Result;
 use model::TreebankModel;
 
 pub struct DependencyTreeWidget {
     drawing_area: DrawingArea,
-    draw_handler: Option<SignalHandlerId>,
     scale: Rc<RefCell<Option<f64>>>,
-    treebank_model: TreebankModel,
-    treebank_idx: usize,
+    treebank_model: Rc<RefCell<TreebankModel>>,
+    treebank_idx: Rc<RefCell<usize>>,
 }
 
 impl Deref for DependencyTreeWidget {
@@ -29,60 +25,55 @@ impl Deref for DependencyTreeWidget {
 
 impl DependencyTreeWidget {
     pub fn new(treebank_model: TreebankModel) -> Self {
-        DependencyTreeWidget {
+        let mut widget = DependencyTreeWidget {
             drawing_area: DrawingArea::new(),
-            draw_handler: None,
             scale: Rc::new(RefCell::new(None)),
-            treebank_model,
-            treebank_idx: 0,
-        }
+            treebank_model: Rc::new(RefCell::new(treebank_model)),
+            treebank_idx: Rc::new(RefCell::new(0)),
+        };
+
+        widget.setup_drawing_area();
+
+        widget
     }
 
     pub fn inner(&self) -> &DrawingArea {
         &self.drawing_area
     }
 
-    pub fn next(&mut self) -> Result<()> {
-        if self.treebank_idx == self.treebank_model.len() - 1 {
-            return Ok(());
+    pub fn next(&mut self) {
+        if *self.treebank_idx.borrow() == self.treebank_model.borrow().len() - 1 {
+            return;
         }
 
-        self.treebank_idx += 1;
+        *self.treebank_idx.borrow_mut() += 1;
         *self.scale.borrow_mut() = None;
 
-        self.show_graph()
+        self.drawing_area.queue_draw();
     }
 
-    pub fn previous(&mut self) -> Result<()> {
-        if self.treebank_idx == 0 {
-            return Ok(());
+    pub fn previous(&mut self) {
+        if *self.treebank_idx.borrow() == 0 {
+            return;
         }
 
-        self.treebank_idx -= 1;
+        *self.treebank_idx.borrow_mut() -= 1;
         *self.scale.borrow_mut() = None;
 
-        self.show_graph()
+        self.drawing_area.queue_draw();
     }
 
-    pub fn show_graph(&mut self) -> Result<()> {
-        // FIXME: what to do with an empty treebank?
-        assert!(
-            self.treebank_idx < self.treebank_model.len(),
-            "Widget has invalid treebank index"
-        );
-
-        let handle = self.treebank_model.handle(self.treebank_idx)?;
-
+    fn setup_drawing_area(&mut self) {
+        let treebank_idx = self.treebank_idx.clone();
+        let treebank_model = self.treebank_model.clone();
         let scale = self.scale.clone();
-        *scale.borrow_mut() = None;
 
-        let mut draw_handler = None;
-        mem::swap(&mut draw_handler, &mut self.draw_handler);
-        if let Some(draw_handler) = draw_handler {
-            self.drawing_area.disconnect(draw_handler);
-        }
+        self.drawing_area.connect_draw(move |drawing_area, cr| {
+            let handle = treebank_model
+                .borrow()
+                .handle(*treebank_idx.borrow())
+                .expect("Could not retrieve tree");
 
-        self.draw_handler = Some(self.drawing_area.connect_draw(move |drawing_area, cr| {
             // White canvas.
             cr.set_source_rgba(1.0, 1.0, 1.0, 1.0);
             cr.paint();
@@ -113,9 +104,7 @@ impl DependencyTreeWidget {
             );
 
             Inhibit(false)
-        }));
-
-        Ok(())
+        });
     }
 
     pub fn zoom_in(&mut self) {
