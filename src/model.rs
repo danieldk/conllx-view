@@ -8,6 +8,72 @@ use rsvg::Handle;
 use error::Result;
 use graph::DependencyGraph;
 
+pub struct StatefulTreebankModel {
+    inner: TreebankModel,
+    idx: usize,
+    callbacks: Vec<Box<Fn(&StatefulTreebankModel)>>,
+}
+
+impl StatefulTreebankModel {
+    pub fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = DependencyGraph>,
+    {
+        StatefulTreebankModel {
+            inner: TreebankModel::from_iter(iter),
+            idx: 0,
+            callbacks: Vec::new(),
+        }
+    }
+
+    fn callbacks(&mut self) {
+        for callback in &self.callbacks {
+            (*callback)(&self)
+        }
+    }
+
+    pub fn connect_update<F>(&mut self, callback: F)
+    where
+        F: 'static + Fn(&StatefulTreebankModel),
+    {
+        self.callbacks.push(Box::new(callback));
+    }
+
+    pub fn first(&mut self) {
+        self.set_idx(0);
+    }
+
+    pub fn handle(&self) -> Result<Handle> {
+        self.inner.handle(self.idx)
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    pub fn next(&mut self) {
+        let idx = self.idx;
+        self.set_idx(idx + 1);
+    }
+
+    pub fn previous(&mut self) {
+        let idx = self.idx;
+        self.set_idx(idx - 1);
+    }
+
+    fn set_idx(&mut self, idx: usize) {
+        if idx < self.len() {
+            self.idx = idx;
+        }
+
+        self.callbacks();
+    }
+
+    pub fn tokens(&self) -> Vec<&str> {
+        self.inner.tokens(self.idx)
+    }
+}
+
 pub struct TreebankModel {
     treebank: Vec<DependencyGraph>,
 }
@@ -34,6 +100,17 @@ impl TreebankModel {
     fn svg(&self, idx: usize) -> Result<String> {
         let dot = graph_to_dot(&self.treebank[idx])?;
         dot_to_svg(&dot)
+    }
+
+    pub fn tokens(&self, idx: usize) -> Vec<&str> {
+        let graph = &self.treebank[idx].0;
+
+        let mut tokens = Vec::new();
+        for node_idx in graph.node_indices() {
+            tokens.push(graph[node_idx].token.form());
+        }
+
+        tokens
     }
 }
 
