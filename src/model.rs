@@ -14,6 +14,10 @@ pub struct StatefulTreebankModel {
     callbacks: Vec<Box<Fn(&StatefulTreebankModel)>>,
 }
 
+pub trait DependencyTreeDot {
+    fn dependency_tree_dot(&self) -> Result<String>;
+}
+
 impl StatefulTreebankModel {
     pub fn from_iter<I>(iter: I) -> Self
     where
@@ -47,6 +51,10 @@ impl StatefulTreebankModel {
         self.inner.handle(self.idx)
     }
 
+    pub fn idx(&self) -> usize {
+        self.idx
+    }
+
     pub fn len(&self) -> usize {
         self.inner.len()
     }
@@ -71,6 +79,12 @@ impl StatefulTreebankModel {
 
     pub fn tokens(&self) -> Vec<&str> {
         self.inner.tokens(self.idx)
+    }
+}
+
+impl DependencyTreeDot for StatefulTreebankModel {
+    fn dependency_tree_dot(&self) -> Result<String> {
+        graph_to_dot(&self.inner.treebank[self.idx])
     }
 }
 

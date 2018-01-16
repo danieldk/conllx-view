@@ -10,6 +10,9 @@ extern crate stdinout;
 
 use std::cell::RefCell;
 use std::env::args;
+use std::fs::File;
+use std::io::{BufWriter, Write};
+
 use std::process;
 use std::rc::Rc;
 
@@ -19,6 +22,7 @@ use gtk::PolicyType;
 use stdinout::{Input, OrExit};
 
 mod error;
+use error::Result;
 
 mod graph;
 use graph::sentence_to_graph;
@@ -27,11 +31,12 @@ use graph::sentence_to_graph;
 mod macros;
 
 mod model;
-use model::StatefulTreebankModel;
+use model::{DependencyTreeDot, StatefulTreebankModel};
 
 mod widgets;
 use widgets::{DependencyTreeWidget, SentenceWidget};
 
+const DOT_KEY: u32 = 100;
 const NEXT_KEY: u32 = 110;
 const PREVIOUS_KEY: u32 = 112;
 const QUIT_KEY: u32 = 113;
@@ -155,6 +160,11 @@ fn setup_key_event_handling(
     window.connect_key_press_event(move |_, key_event| {
         println!("key: {}", key_event.get_keyval());
         match key_event.get_keyval() {
+            DOT_KEY => {
+                if let Err(err) = save_dot(&treebank_model.borrow()) {
+                    eprintln!("Error writing dot output: {}", err);
+                }
+            }
             NEXT_KEY => {
                 treebank_model.borrow_mut().next();
             }
@@ -178,4 +188,11 @@ fn setup_key_event_handling(
         }
         Inhibit(false)
     });
+}
+
+fn save_dot(treebank_model: &StatefulTreebankModel) -> Result<()> {
+    let dot = treebank_model.dependency_tree_dot()?;
+    let idx = treebank_model.idx();
+    let mut writer = BufWriter::new(File::create(format!("s{}.dot", idx))?);
+    Ok(writer.write_all(dot.as_bytes())?)
 }
