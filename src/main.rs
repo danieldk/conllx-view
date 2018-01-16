@@ -114,7 +114,7 @@ fn create_gui(width: i32, height: i32, treebank_model: StatefulTreebankModel) {
     window.set_title("conllx-view");
     window.set_border_width(10);
 
-    setup_key_event_handling(&window, treebank_model, dep_widget.clone());
+    setup_key_event_handling(&window, treebank_model.clone(), dep_widget.clone());
 
     window.set_default_size(width, height);
 
@@ -125,6 +125,8 @@ fn create_gui(width: i32, height: i32, treebank_model: StatefulTreebankModel) {
 
     window.add(&vbox);
     window.show_all();
+
+    treebank_model.borrow_mut().first();
 }
 
 fn setup_key_event_handling(

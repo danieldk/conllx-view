@@ -39,6 +39,10 @@ impl StatefulTreebankModel {
         self.callbacks.push(Box::new(callback));
     }
 
+    pub fn first(&mut self) {
+        self.set_idx(0);
+    }
+
     pub fn handle(&self) -> Result<Handle> {
         self.inner.handle(self.idx)
     }
@@ -48,27 +52,25 @@ impl StatefulTreebankModel {
     }
 
     pub fn next(&mut self) {
-        if self.idx == self.inner.len() - 1 {
-            return;
-        }
-
-        self.idx += 1;
-
-        self.callbacks();
+        let idx = self.idx;
+        self.set_idx(idx + 1);
     }
 
     pub fn previous(&mut self) {
-        if self.idx == 0 {
-            return;
-        }
-
-        self.idx -= 1;
-
-        self.callbacks();
+        let idx = self.idx;
+        self.set_idx(idx - 1);
     }
 
     pub fn sentence(&self) -> String {
         format!("Sentence {}", self.idx)
+    }
+
+    fn set_idx(&mut self, idx: usize) {
+        if idx < self.len() {
+            self.idx = idx;
+        }
+
+        self.callbacks();
     }
 }
 
