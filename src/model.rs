@@ -131,8 +131,10 @@ fn graph_to_dot(graph: &DependencyGraph) -> Result<String> {
     let mut dot = String::new();
 
     dot.push_str("digraph deptree {\n");
-    dot.push_str(r#"graph [charset = "UTF-8"]"#);
-    dot.push_str(r#"node [shape=plaintext, height=0, width=0, fontsize=12, fontname="Helvetica"]"#);
+    dot.push_str("graph [charset = \"UTF-8\"]\n");
+    dot.push_str(
+        "node [shape=plaintext, height=0, width=0, fontsize=12, fontname=\"Helvetica\"]\n",
+    );
 
     for node_idx in graph.0.node_indices() {
         writeln!(
@@ -143,7 +145,7 @@ fn graph_to_dot(graph: &DependencyGraph) -> Result<String> {
         )?;
     }
 
-    dot.push_str(r##"edge [color="#4b0082", fontsize="8", fontname="Courier New"]"##);
+    dot.push_str("edge [color=\"#4b0082\", fontsize=\"8\", fontname=\"Courier New\"]\n");
 
     for edge_idx in graph.0.edge_indices() {
         let weight = &graph.0[edge_idx];
