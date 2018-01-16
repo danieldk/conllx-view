@@ -11,28 +11,50 @@ use graph::DependencyGraph;
 pub struct StatefulTreebankModel {
     inner: TreebankModel,
     idx: usize,
-    callbacks: Vec<Box<FnMut()>>,
+    tree_cbs: Vec<Box<FnMut(Handle)>>,
+    sent_cbs: Vec<Box<FnMut(String)>>,
 }
 
 impl StatefulTreebankModel {
     pub fn from_iter<I>(iter: I) -> Self
-        where
+    where
         I: IntoIterator<Item = DependencyGraph>,
     {
         StatefulTreebankModel {
             inner: TreebankModel::from_iter(iter),
             idx: 0,
-            callbacks: Vec::new(),
+            tree_cbs: Vec::new(),
+            sent_cbs: Vec::new(),
         }
     }
 
-    pub fn add_callback<F>(&mut self, cb: F) where F: 'static + FnMut() {
-        self.callbacks.push(Box::new(cb));
+    pub fn add_sentence_callback<F>(&mut self, cb: F)
+    where
+        F: 'static + FnMut(String),
+    {
+        self.sent_cbs.push(Box::new(cb));
     }
 
-    fn callbacks(&mut self) {
-        for callback in &mut self.callbacks {
-            (*callback)()
+    pub fn add_tree_callback<F>(&mut self, cb: F)
+    where
+        F: 'static + FnMut(Handle),
+    {
+        self.tree_cbs.push(Box::new(cb));
+    }
+
+    fn sentence_callbacks(&mut self) {
+        let sentence = self.sentence();
+
+        for callback in &mut self.sent_cbs {
+            (*callback)(sentence.clone())
+        }
+    }
+
+    fn tree_callbacks(&mut self) {
+        if let Ok(handle) = self.handle() {
+            for callback in &mut self.tree_cbs {
+                (*callback)(handle.clone())
+            }
         }
     }
 
@@ -51,7 +73,8 @@ impl StatefulTreebankModel {
 
         self.idx += 1;
 
-        self.callbacks();
+        self.tree_callbacks();
+        self.sentence_callbacks();
     }
 
     pub fn previous(&mut self) {
@@ -61,7 +84,8 @@ impl StatefulTreebankModel {
 
         self.idx -= 1;
 
-        self.callbacks();
+        self.tree_callbacks();
+        self.sentence_callbacks();
     }
 
     pub fn sentence(&self) -> String {

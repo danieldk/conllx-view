@@ -6,12 +6,10 @@ use gtk::prelude::*;
 use gtk::{DrawingArea, TextView};
 use rsvg::{Handle, HandleExt};
 
-use model::StatefulTreebankModel;
-
 pub struct DependencyTreeWidget {
     drawing_area: DrawingArea,
+    handle: Rc<RefCell<Option<Handle>>>,
     scale: Rc<RefCell<Option<f64>>>,
-    treebank_model: Rc<RefCell<StatefulTreebankModel>>,
 }
 
 impl Deref for DependencyTreeWidget {
@@ -23,18 +21,14 @@ impl Deref for DependencyTreeWidget {
 }
 
 impl DependencyTreeWidget {
-    pub fn new(treebank_model: Rc<RefCell<StatefulTreebankModel>>) -> Self {
-        let drawing_area = DrawingArea::new();
-
+    pub fn new() -> Self {
         let mut widget = DependencyTreeWidget {
-            drawing_area: drawing_area.clone(),
+            drawing_area: DrawingArea::new(),
+            handle: Rc::new(RefCell::new(None)),
             scale: Rc::new(RefCell::new(None)),
-            treebank_model,
         };
 
         widget.setup_drawing_area();
-
-        widget.treebank_model.borrow_mut().add_callback(move || drawing_area.queue_draw());
 
         widget
     }
@@ -44,14 +38,13 @@ impl DependencyTreeWidget {
     }
 
     fn setup_drawing_area(&mut self) {
-        let treebank_model = self.treebank_model.clone();
         let scale = self.scale.clone();
+        let handle = self.handle.clone();
 
         self.drawing_area.connect_draw(move |drawing_area, cr| {
-            let handle = treebank_model
-                .borrow()
-                .handle()
-                .expect("Could not retrieve tree");
+            // FIXME: clone handle?
+            let handle = handle.borrow();
+            let handle = ok_or!(handle.as_ref(), return Inhibit(false));
 
             // White canvas.
             cr.set_source_rgba(1.0, 1.0, 1.0, 1.0);
@@ -84,6 +77,12 @@ impl DependencyTreeWidget {
 
             Inhibit(false)
         });
+    }
+
+    pub fn update(&mut self, handle: Handle) {
+        *self.handle.borrow_mut() = Some(handle);
+        *self.scale.borrow_mut() = None;
+        self.drawing_area.queue_draw();
     }
 
     pub fn zoom_in(&mut self) {
@@ -121,11 +120,9 @@ fn compute_centering_offset(drawing_area: &DrawingArea, handle: &Handle) -> (f64
 }
 
 pub struct SentenceWidget {
-    text_view: Rc<RefCell<TextView>>,
-    treebank_model: Rc<RefCell<StatefulTreebankModel>>,
+    text_view: TextView,
 }
 
-/*
 impl Deref for SentenceWidget {
     type Target = TextView;
 
@@ -133,36 +130,20 @@ impl Deref for SentenceWidget {
         &self.text_view
     }
 }
-*/
 
 impl SentenceWidget {
-    pub fn new(treebank_model: Rc<RefCell<StatefulTreebankModel>>) -> Self {
-        let text_view = Rc::new(RefCell::new(TextView::new()));
-        text_view.borrow().set_editable(false);
-        text_view
-            .borrow()
-            .get_buffer()
-            .unwrap()
-            .set_text(&treebank_model.borrow().sentence());
+    pub fn new() -> Self {
+        let text_view = TextView::new();
+        text_view.set_editable(false);
 
-        let widget = SentenceWidget {
-            text_view: text_view.clone(),
-            treebank_model: treebank_model.clone(),
-        };
-
-        widget.treebank_model.borrow_mut().add_callback(move ||
-                                                        text_view.borrow()
-                                                        .get_buffer()
-                                                        .unwrap()
-                                                        .set_text(&treebank_model.borrow().sentence())
-
-        );
-
-
-        widget
+        SentenceWidget { text_view }
     }
 
-    pub fn inner(&self) -> TextView {
-        self.text_view.borrow().clone()
+    pub fn inner(&self) -> &TextView {
+        &self.text_view
+    }
+
+    pub fn update(&mut self, sentence: String) {
+        self.text_view.get_buffer().unwrap().set_text(&sentence);
     }
 }

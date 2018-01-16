@@ -88,18 +88,27 @@ fn main() {
 fn create_gui(width: i32, height: i32, treebank_model: StatefulTreebankModel) {
     let treebank_model = Rc::new(RefCell::new(treebank_model));
 
-    let dep_widget = Rc::new(RefCell::new(DependencyTreeWidget::new(
-        treebank_model.clone(),
-    )));
+    let dep_widget = Rc::new(RefCell::new(DependencyTreeWidget::new()));
+    let dep_widget_clone = dep_widget.clone();
+    treebank_model.borrow_mut().add_tree_callback(move |tree| {
+        dep_widget_clone.borrow_mut().update(tree);
+    });
+
     let scroll = gtk::ScrolledWindow::new(None, None);
     scroll.set_policy(PolicyType::Automatic, PolicyType::Automatic);
     scroll.add(dep_widget.borrow().inner());
 
-    let sent_widget = Rc::new(RefCell::new(SentenceWidget::new(treebank_model.clone())));
+    let sent_widget = Rc::new(RefCell::new(SentenceWidget::new()));
+    let sent_widget_clone = sent_widget.clone();
+    treebank_model
+        .borrow_mut()
+        .add_sentence_callback(move |sent| {
+            sent_widget_clone.borrow_mut().update(sent);
+        });
 
     let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
     vbox.pack_start(&scroll, true, true, 0);
-    vbox.pack_start(&sent_widget.borrow().inner(), false, false, 0);
+    vbox.pack_start(sent_widget.borrow().inner(), false, false, 0);
 
     let window = gtk::Window::new(gtk::WindowType::Toplevel);
     window.set_title("conllx-view");
