@@ -4,6 +4,7 @@ extern crate conllx;
 extern crate error_chain;
 extern crate getopts;
 extern crate gtk;
+extern crate itertools;
 extern crate petgraph;
 extern crate rsvg;
 extern crate stdinout;
@@ -31,7 +32,7 @@ use graph::sentence_to_graph;
 mod macros;
 
 mod model;
-use model::{DependencyTreeDot, StatefulTreebankModel};
+use model::{DependencyTreeDot, DependencyTreeTikz, StatefulTreebankModel};
 
 mod widgets;
 use widgets::{DependencyTreeWidget, SentenceWidget};
@@ -40,6 +41,7 @@ const DOT_KEY: u32 = 100;
 const NEXT_KEY: u32 = 110;
 const PREVIOUS_KEY: u32 = 112;
 const QUIT_KEY: u32 = 113;
+const TIKZ_KEY: u32 = 116;
 const ZOOM_IN_KEY: u32 = 61;
 const ZOOM_OUT_KEY: u32 = 45;
 
@@ -173,6 +175,10 @@ fn setup_key_event_handling(
             QUIT_KEY => {
                 gtk::main_quit();
             }
+            TIKZ_KEY => match save_tikz(&treebank_model.borrow()) {
+                Ok(filename) => println!("Saved tree to: {}", filename),
+                Err(err) => eprintln!("Error writing dot output: {}", err),
+            },
             ZOOM_IN_KEY => {
                 let mut widget_mut = dep_widget.borrow_mut();
                 widget_mut.zoom_in();
@@ -194,5 +200,13 @@ fn save_dot(treebank_model: &StatefulTreebankModel) -> Result<String> {
     let filename = format!("s{}.dot", treebank_model.idx());
     let mut writer = BufWriter::new(File::create(&filename)?);
     writer.write_all(dot.as_bytes())?;
+    Ok(filename)
+}
+
+fn save_tikz(treebank_model: &StatefulTreebankModel) -> Result<String> {
+    let tikz = treebank_model.dependency_tree_tikz()?;
+    let filename = format!("s{}.tikz", treebank_model.idx());
+    let mut writer = BufWriter::new(File::create(&filename)?);
+    writer.write_all(tikz.as_bytes())?;
     Ok(filename)
 }

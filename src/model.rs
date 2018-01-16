@@ -3,6 +3,7 @@ use std::io::{Read, Write};
 use std::iter::FromIterator;
 use std::process::{Command, Stdio};
 
+use itertools::Itertools;
 use rsvg::Handle;
 
 use error::Result;
@@ -16,6 +17,10 @@ pub struct StatefulTreebankModel {
 
 pub trait DependencyTreeDot {
     fn dependency_tree_dot(&self) -> Result<String>;
+}
+
+pub trait DependencyTreeTikz {
+    fn dependency_tree_tikz(&self) -> Result<String>;
 }
 
 impl StatefulTreebankModel {
@@ -85,6 +90,12 @@ impl StatefulTreebankModel {
 impl DependencyTreeDot for StatefulTreebankModel {
     fn dependency_tree_dot(&self) -> Result<String> {
         graph_to_dot(&self.inner.treebank[self.idx])
+    }
+}
+
+impl DependencyTreeTikz for StatefulTreebankModel {
+    fn dependency_tree_tikz(&self) -> Result<String> {
+        graph_to_tikz(&self.inner.treebank[self.idx])
     }
 }
 
@@ -175,6 +186,42 @@ fn graph_to_dot(graph: &DependencyGraph) -> Result<String> {
     }
 
     dot.push_str("}");
+
+    Ok(dot)
+}
+
+fn graph_to_tikz(graph: &DependencyGraph) -> Result<String> {
+    let mut dot = String::new();
+
+    dot.push_str("\\documentclass{standalone}\n\n");
+    dot.push_str("\\usepackage{tikz-dependency}\n\n");
+    dot.push_str("\\begin{document}\n\n");
+    dot.push_str("\\begin{dependency}\n");
+    dot.push_str("\\begin{deptext}");
+
+    dot.push_str(&graph
+        .0
+        .node_indices()
+        .map(|idx| graph.0[idx].token.form())
+        .join(" \\& "));
+
+    dot.push_str("\\\\\n\\end{deptext}\n");
+
+    for edge_idx in graph.0.edge_indices() {
+        let weight = &graph.0[edge_idx];
+        let (source, target) = graph.0.edge_endpoints(edge_idx).unwrap();
+
+        writeln!(
+            &mut dot,
+            "\\depedge{{{}}}{{{}}}{{{}}}",
+            source.index() + 1,
+            target.index() + 1,
+            escape_str(weight)
+        )?;
+    }
+
+    dot.push_str("\\end{dependency}\n\n");
+    dot.push_str("\\end{document}");
 
     Ok(dot)
 }
