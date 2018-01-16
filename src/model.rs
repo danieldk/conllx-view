@@ -61,16 +61,16 @@ impl StatefulTreebankModel {
         self.set_idx(idx - 1);
     }
 
-    pub fn sentence(&self) -> String {
-        format!("Sentence {}", self.idx)
-    }
-
     fn set_idx(&mut self, idx: usize) {
         if idx < self.len() {
             self.idx = idx;
         }
 
         self.callbacks();
+    }
+
+    pub fn tokens(&self) -> Vec<&str> {
+        self.inner.tokens(self.idx)
     }
 }
 
@@ -100,6 +100,17 @@ impl TreebankModel {
     fn svg(&self, idx: usize) -> Result<String> {
         let dot = graph_to_dot(&self.treebank[idx])?;
         dot_to_svg(&dot)
+    }
+
+    pub fn tokens(&self, idx: usize) -> Vec<&str> {
+        let graph = &self.treebank[idx].0;
+
+        let mut tokens = Vec::new();
+        for node_idx in graph.node_indices() {
+            tokens.push(graph[node_idx].token.form());
+        }
+
+        tokens
     }
 }
 

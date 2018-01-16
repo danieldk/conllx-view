@@ -3,7 +3,7 @@ use std::ops::Deref;
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use gtk::{DrawingArea, TextView};
+use gtk::{DrawingArea, TextView, WrapMode};
 use rsvg::{Handle, HandleExt};
 
 pub struct DependencyTreeWidget {
@@ -135,6 +135,7 @@ impl SentenceWidget {
     pub fn new() -> Self {
         let text_view = TextView::new();
         text_view.set_editable(false);
+        text_view.set_wrap_mode(WrapMode::Word);
 
         SentenceWidget { text_view }
     }

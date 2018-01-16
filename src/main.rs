@@ -103,7 +103,8 @@ fn create_gui(width: i32, height: i32, treebank_model: StatefulTreebankModel) {
     let sent_widget = Rc::new(RefCell::new(SentenceWidget::new()));
     let sent_widget_clone = sent_widget.clone();
     treebank_model.borrow_mut().connect_update(move |model| {
-        sent_widget_clone.borrow_mut().update(model.sentence());
+        let tokens = model.tokens();
+        sent_widget_clone.borrow_mut().update(tokens.join(" "));
     });
 
     let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
