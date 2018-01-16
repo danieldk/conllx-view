@@ -160,11 +160,10 @@ fn setup_key_event_handling(
     window.connect_key_press_event(move |_, key_event| {
         println!("key: {}", key_event.get_keyval());
         match key_event.get_keyval() {
-            DOT_KEY => {
-                if let Err(err) = save_dot(&treebank_model.borrow()) {
-                    eprintln!("Error writing dot output: {}", err);
-                }
-            }
+            DOT_KEY => match save_dot(&treebank_model.borrow()) {
+                Ok(filename) => println!("Saved tree to: {}", filename),
+                Err(err) => eprintln!("Error writing dot output: {}", err),
+            },
             NEXT_KEY => {
                 treebank_model.borrow_mut().next();
             }
@@ -190,9 +189,10 @@ fn setup_key_event_handling(
     });
 }
 
-fn save_dot(treebank_model: &StatefulTreebankModel) -> Result<()> {
+fn save_dot(treebank_model: &StatefulTreebankModel) -> Result<String> {
     let dot = treebank_model.dependency_tree_dot()?;
-    let idx = treebank_model.idx();
-    let mut writer = BufWriter::new(File::create(format!("s{}.dot", idx))?);
-    Ok(writer.write_all(dot.as_bytes())?)
+    let filename = format!("s{}.dot", treebank_model.idx());
+    let mut writer = BufWriter::new(File::create(&filename)?);
+    writer.write_all(dot.as_bytes())?;
+    Ok(filename)
 }
