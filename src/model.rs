@@ -124,10 +124,7 @@ fn escape_str<S>(s: S) -> String
 where
     S: AsRef<str>,
 {
-    s.as_ref()
-        .chars()
-        .flat_map(|c| c.escape_default())
-        .collect()
+    s.as_ref().replace('"', r#"\""#)
 }
 
 fn graph_to_dot(graph: &DependencyGraph) -> Result<String> {
