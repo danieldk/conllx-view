@@ -88,24 +88,13 @@ fn main() {
 fn create_gui(width: i32, height: i32, treebank_model: StatefulTreebankModel) {
     let treebank_model = Rc::new(RefCell::new(treebank_model));
 
-    let dep_widget = Rc::new(RefCell::new(DependencyTreeWidget::new()));
-    let dep_widget_clone = dep_widget.clone();
-    treebank_model.borrow_mut().connect_update(move |model| {
-        if let Ok(handle) = model.handle() {
-            dep_widget_clone.borrow_mut().update(handle);
-        }
-    });
+    let dep_widget = create_dependency_tree_widget(&mut treebank_model.borrow_mut());
 
     let scroll = gtk::ScrolledWindow::new(None, None);
     scroll.set_policy(PolicyType::Automatic, PolicyType::Automatic);
     scroll.add(dep_widget.borrow().inner());
 
-    let sent_widget = Rc::new(RefCell::new(SentenceWidget::new()));
-    let sent_widget_clone = sent_widget.clone();
-    treebank_model.borrow_mut().connect_update(move |model| {
-        let tokens = model.tokens();
-        sent_widget_clone.borrow_mut().update(tokens.join(" "));
-    });
+    let sent_widget = create_sentence_widget(&mut treebank_model.borrow_mut());
 
     let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
     vbox.pack_start(&scroll, true, true, 0);
@@ -128,6 +117,34 @@ fn create_gui(width: i32, height: i32, treebank_model: StatefulTreebankModel) {
     window.show_all();
 
     treebank_model.borrow_mut().first();
+}
+
+fn create_dependency_tree_widget(
+    treebank_model: &mut StatefulTreebankModel,
+) -> Rc<RefCell<DependencyTreeWidget>> {
+    let dep_widget = Rc::new(RefCell::new(DependencyTreeWidget::new()));
+
+    // Notify widget when another tree is selected.
+    treebank_model.connect_update(clone!(dep_widget => move |model| {
+        if let Ok(handle) = model.handle() {
+            dep_widget.borrow_mut().update(handle);
+        }
+    }));
+
+    dep_widget
+}
+
+fn create_sentence_widget(
+    treebank_model: &mut StatefulTreebankModel,
+) -> Rc<RefCell<SentenceWidget>> {
+    let sent_widget = Rc::new(RefCell::new(SentenceWidget::new()));
+
+    treebank_model.connect_update(clone!(sent_widget => move |model| {
+        let tokens = model.tokens();
+        sent_widget.borrow_mut().update(tokens.join(" "));
+    }));
+
+    sent_widget
 }
 
 fn setup_key_event_handling(
