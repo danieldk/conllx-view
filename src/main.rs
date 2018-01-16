@@ -90,8 +90,10 @@ fn create_gui(width: i32, height: i32, treebank_model: StatefulTreebankModel) {
 
     let dep_widget = Rc::new(RefCell::new(DependencyTreeWidget::new()));
     let dep_widget_clone = dep_widget.clone();
-    treebank_model.borrow_mut().add_tree_callback(move |tree| {
-        dep_widget_clone.borrow_mut().update(tree);
+    treebank_model.borrow_mut().connect_update(move |model| {
+        if let Ok(handle) = model.handle() {
+            dep_widget_clone.borrow_mut().update(handle);
+        }
     });
 
     let scroll = gtk::ScrolledWindow::new(None, None);
@@ -100,11 +102,9 @@ fn create_gui(width: i32, height: i32, treebank_model: StatefulTreebankModel) {
 
     let sent_widget = Rc::new(RefCell::new(SentenceWidget::new()));
     let sent_widget_clone = sent_widget.clone();
-    treebank_model
-        .borrow_mut()
-        .add_sentence_callback(move |sent| {
-            sent_widget_clone.borrow_mut().update(sent);
-        });
+    treebank_model.borrow_mut().connect_update(move |model| {
+        sent_widget_clone.borrow_mut().update(model.sentence());
+    });
 
     let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
     vbox.pack_start(&scroll, true, true, 0);

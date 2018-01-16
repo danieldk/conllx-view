@@ -11,8 +11,7 @@ use graph::DependencyGraph;
 pub struct StatefulTreebankModel {
     inner: TreebankModel,
     idx: usize,
-    tree_cbs: Vec<Box<FnMut(Handle)>>,
-    sent_cbs: Vec<Box<FnMut(String)>>,
+    callbacks: Vec<Box<Fn(&StatefulTreebankModel)>>,
 }
 
 impl StatefulTreebankModel {
@@ -23,39 +22,21 @@ impl StatefulTreebankModel {
         StatefulTreebankModel {
             inner: TreebankModel::from_iter(iter),
             idx: 0,
-            tree_cbs: Vec::new(),
-            sent_cbs: Vec::new(),
+            callbacks: Vec::new(),
         }
     }
 
-    pub fn add_sentence_callback<F>(&mut self, cb: F)
+    fn callbacks(&mut self) {
+        for callback in &self.callbacks {
+            (*callback)(&self)
+        }
+    }
+
+    pub fn connect_update<F>(&mut self, callback: F)
     where
-        F: 'static + FnMut(String),
+        F: 'static + Fn(&StatefulTreebankModel),
     {
-        self.sent_cbs.push(Box::new(cb));
-    }
-
-    pub fn add_tree_callback<F>(&mut self, cb: F)
-    where
-        F: 'static + FnMut(Handle),
-    {
-        self.tree_cbs.push(Box::new(cb));
-    }
-
-    fn sentence_callbacks(&mut self) {
-        let sentence = self.sentence();
-
-        for callback in &mut self.sent_cbs {
-            (*callback)(sentence.clone())
-        }
-    }
-
-    fn tree_callbacks(&mut self) {
-        if let Ok(handle) = self.handle() {
-            for callback in &mut self.tree_cbs {
-                (*callback)(handle.clone())
-            }
-        }
+        self.callbacks.push(Box::new(callback));
     }
 
     pub fn handle(&self) -> Result<Handle> {
@@ -73,8 +54,7 @@ impl StatefulTreebankModel {
 
         self.idx += 1;
 
-        self.tree_callbacks();
-        self.sentence_callbacks();
+        self.callbacks();
     }
 
     pub fn previous(&mut self) {
@@ -84,8 +64,7 @@ impl StatefulTreebankModel {
 
         self.idx -= 1;
 
-        self.tree_callbacks();
-        self.sentence_callbacks();
+        self.callbacks();
     }
 
     pub fn sentence(&self) -> String {
