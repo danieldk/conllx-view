@@ -8,6 +8,67 @@ use rsvg::Handle;
 use error::Result;
 use graph::DependencyGraph;
 
+pub struct StatefulTreebankModel {
+    inner: TreebankModel,
+    idx: usize,
+    callbacks: Vec<Box<FnMut()>>,
+}
+
+impl StatefulTreebankModel {
+    pub fn from_iter<I>(iter: I) -> Self
+        where
+        I: IntoIterator<Item = DependencyGraph>,
+    {
+        StatefulTreebankModel {
+            inner: TreebankModel::from_iter(iter),
+            idx: 0,
+            callbacks: Vec::new(),
+        }
+    }
+
+    pub fn add_callback<F>(&mut self, cb: F) where F: 'static + FnMut() {
+        self.callbacks.push(Box::new(cb));
+    }
+
+    fn callbacks(&mut self) {
+        for callback in &mut self.callbacks {
+            (*callback)()
+        }
+    }
+
+    pub fn handle(&self) -> Result<Handle> {
+        self.inner.handle(self.idx)
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    pub fn next(&mut self) {
+        if self.idx == self.inner.len() - 1 {
+            return;
+        }
+
+        self.idx += 1;
+
+        self.callbacks();
+    }
+
+    pub fn previous(&mut self) {
+        if self.idx == 0 {
+            return;
+        }
+
+        self.idx -= 1;
+
+        self.callbacks();
+    }
+
+    pub fn sentence(&self) -> String {
+        format!("Sentence {}", self.idx)
+    }
+}
+
 pub struct TreebankModel {
     treebank: Vec<DependencyGraph>,
 }

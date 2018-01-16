@@ -27,7 +27,7 @@ use graph::sentence_to_graph;
 mod macros;
 
 mod model;
-use model::TreebankModel;
+use model::StatefulTreebankModel;
 
 mod widgets;
 use widgets::{DependencyTreeWidget, SentenceWidget};
@@ -76,7 +76,7 @@ fn main() {
         sentence_to_graph(sent, false)
     });
 
-    let treebank_model = TreebankModel::from_iter(dep_graph_iter);
+    let treebank_model = StatefulTreebankModel::from_iter(dep_graph_iter);
 
     gtk::init().or_exit("Failed to initialize GTK", 1);
 
@@ -85,7 +85,7 @@ fn main() {
     gtk::main();
 }
 
-fn create_gui(width: i32, height: i32, treebank_model: TreebankModel) {
+fn create_gui(width: i32, height: i32, treebank_model: StatefulTreebankModel) {
     let treebank_model = Rc::new(RefCell::new(treebank_model));
 
     let dep_widget = Rc::new(RefCell::new(DependencyTreeWidget::new(
@@ -95,17 +95,17 @@ fn create_gui(width: i32, height: i32, treebank_model: TreebankModel) {
     scroll.set_policy(PolicyType::Automatic, PolicyType::Automatic);
     scroll.add(dep_widget.borrow().inner());
 
-    let sent_widget = Rc::new(RefCell::new(SentenceWidget::new(treebank_model)));
+    let sent_widget = Rc::new(RefCell::new(SentenceWidget::new(treebank_model.clone())));
 
     let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
     vbox.pack_start(&scroll, true, true, 0);
-    vbox.pack_start(sent_widget.borrow().inner(), false, false, 0);
+    vbox.pack_start(&sent_widget.borrow().inner(), false, false, 0);
 
     let window = gtk::Window::new(gtk::WindowType::Toplevel);
     window.set_title("conllx-view");
     window.set_border_width(10);
 
-    setup_key_event_handling(&window, dep_widget.clone(), sent_widget);
+    setup_key_event_handling(&window, treebank_model, dep_widget.clone());
 
     window.set_default_size(width, height);
 
@@ -120,23 +120,17 @@ fn create_gui(width: i32, height: i32, treebank_model: TreebankModel) {
 
 fn setup_key_event_handling(
     window: &gtk::Window,
+    treebank_model: Rc<RefCell<StatefulTreebankModel>>,
     dep_widget: Rc<RefCell<DependencyTreeWidget>>,
-    sent_widget: Rc<RefCell<SentenceWidget>>,
 ) {
     window.connect_key_press_event(move |_, key_event| {
         println!("key: {}", key_event.get_keyval());
         match key_event.get_keyval() {
             NEXT_KEY => {
-                let mut widget_mut = dep_widget.borrow_mut();
-                widget_mut.next();
-                sent_widget.borrow_mut().next();
-                widget_mut.queue_draw();
+                treebank_model.borrow_mut().next();
             }
             PREVIOUS_KEY => {
-                let mut widget_mut = dep_widget.borrow_mut();
-                widget_mut.previous();
-                sent_widget.borrow_mut().previous();
-                widget_mut.queue_draw();
+                treebank_model.borrow_mut().previous();
             }
             QUIT_KEY => {
                 gtk::main_quit();
