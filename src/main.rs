@@ -1,42 +1,53 @@
+extern crate cairo;
 extern crate conllx;
-extern crate dot;
+#[macro_use]
+extern crate error_chain;
 extern crate getopts;
+extern crate gtk;
+extern crate itertools;
 extern crate petgraph;
+extern crate rsvg;
 extern crate stdinout;
 
+use std::cell::RefCell;
 use std::env::args;
-use std::io::{Read, Write};
-use std::process::{self, Command, Stdio};
+use std::fs::File;
+use std::io::{BufWriter, Write};
+use std::process;
+use std::rc::Rc;
 
-use dot::render;
+use rsvg::Handle;
 use getopts::Options;
+use gtk::prelude::*;
+use gtk::PolicyType;
 use stdinout::{Input, OrExit};
 
+mod error;
+use error::Result;
+
 mod graph;
-use graph::sentence_to_graph;
+use graph::{Dot, Svg, Tikz, Tokens};
+
+#[macro_use]
+mod macros;
+
+mod model;
+use model::StatefulTreebankModel;
+
+mod widgets;
+use widgets::{DependencyTreeWidget, SentenceWidget};
+
+const DOT_KEY: u32 = 100;
+const NEXT_KEY: u32 = 110;
+const PREVIOUS_KEY: u32 = 112;
+const QUIT_KEY: u32 = 113;
+const TIKZ_KEY: u32 = 116;
+const ZOOM_IN_KEY: u32 = 61;
+const ZOOM_OUT_KEY: u32 = 45;
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options] EXPR [INPUT_FILE]", program);
     print!("{}", opts.usage(&brief));
-}
-
-fn dot_to_svg(dot: &[u8]) -> String {
-    // FIXME: bind against C library?
-
-    // Spawn Graphviz dot for rendering SVG (Fixme: bind against C library?).
-    let process = Command::new("dot")
-        .arg("-Tsvg")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .or_exit("Couldn't spawn dot", 1);
-
-    process.stdin.unwrap().write_all(dot).or_exit("Cannot write to dot stdin", 1);
-
-    let mut svg = String::new();
-    process.stdout.unwrap().read_to_string(&mut svg).or_exit("Cannot read dot stdout", 1);
-
-    svg
 }
 
 fn main() {
@@ -67,20 +78,137 @@ fn main() {
     let input = Input::from(matches.free.get(0));
     let reader = conllx::Reader::new(input.buf_read().or_exit("Cannot open input for reading", 1));
 
-    for sentence in reader {
-        let sentence = sentence.or_exit("Cannot read sentence", 1);
+    let dep_graph_iter = reader.into_iter().map(|sent| {
+        let sent = sent.or_exit("Cannot read sentence", 1);
+        sent.into()
+    });
 
-        let graph = sentence_to_graph(&sentence, false);
-        //let simplified_graph = graph.map(|_, n| n.token.form(), |_, e| e.unwrap());
+    let treebank_model = StatefulTreebankModel::from_iter(dep_graph_iter);
 
-        //println!("{:?}", Dot::with_config(&simplified_graph, &[]));
+    gtk::init().or_exit("Failed to initialize GTK", 1);
 
-        let mut dot = Vec::new();
-        render(&graph, &mut dot).or_exit("Error writing dot output", 1);
-        let svg = dot_to_svg(&dot);
+    create_gui(800, 600, treebank_model);
 
-        println!("{}", svg);
+    gtk::main();
+}
 
-        return;
-    }
+fn create_gui(width: i32, height: i32, treebank_model: StatefulTreebankModel) {
+    let treebank_model = Rc::new(RefCell::new(treebank_model));
+
+    let dep_widget = create_dependency_tree_widget(&mut treebank_model.borrow_mut());
+
+    let scroll = gtk::ScrolledWindow::new(None, None);
+    scroll.set_policy(PolicyType::Automatic, PolicyType::Automatic);
+    scroll.add(dep_widget.borrow().inner());
+
+    let sent_widget = create_sentence_widget(&mut treebank_model.borrow_mut());
+
+    let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    vbox.pack_start(&scroll, true, true, 0);
+    vbox.pack_start(sent_widget.borrow().inner(), false, false, 0);
+
+    let window = gtk::Window::new(gtk::WindowType::Toplevel);
+    window.set_title("conllx-view");
+    window.set_border_width(10);
+
+    setup_key_event_handling(&window, treebank_model.clone(), dep_widget.clone());
+
+    window.set_default_size(width, height);
+
+    window.connect_delete_event(|_, _| {
+        gtk::main_quit();
+        Inhibit(false)
+    });
+
+    window.add(&vbox);
+    window.show_all();
+
+    treebank_model.borrow_mut().first();
+}
+
+fn create_dependency_tree_widget(
+    treebank_model: &mut StatefulTreebankModel,
+) -> Rc<RefCell<DependencyTreeWidget>> {
+    let dep_widget = Rc::new(RefCell::new(DependencyTreeWidget::new()));
+
+    // Notify widget when another tree is selected.
+    treebank_model.connect_update(clone!(dep_widget => move |model| {
+        if let Ok(svg) = model.graph().svg() {
+            if let Ok(handle) = Handle::new_from_data(svg.as_bytes()) {
+                dep_widget.borrow_mut().update(handle);
+            }
+        }
+    }));
+
+    dep_widget
+}
+
+fn create_sentence_widget(
+    treebank_model: &mut StatefulTreebankModel,
+) -> Rc<RefCell<SentenceWidget>> {
+    let sent_widget = Rc::new(RefCell::new(SentenceWidget::new()));
+
+    treebank_model.connect_update(clone!(sent_widget => move |model| {
+        let tokens = model.graph().tokens();
+        sent_widget.borrow_mut().update(tokens.join(" "));
+    }));
+
+    sent_widget
+}
+
+fn setup_key_event_handling(
+    window: &gtk::Window,
+    treebank_model: Rc<RefCell<StatefulTreebankModel>>,
+    dep_widget: Rc<RefCell<DependencyTreeWidget>>,
+) {
+    window.connect_key_press_event(move |_, key_event| {
+        println!("key: {}", key_event.get_keyval());
+        match key_event.get_keyval() {
+            DOT_KEY => match save_dot(&treebank_model.borrow()) {
+                Ok(filename) => println!("Saved tree to: {}", filename),
+                Err(err) => eprintln!("Error writing dot output: {}", err),
+            },
+            NEXT_KEY => {
+                treebank_model.borrow_mut().next();
+            }
+            PREVIOUS_KEY => {
+                treebank_model.borrow_mut().previous();
+            }
+            QUIT_KEY => {
+                gtk::main_quit();
+            }
+            TIKZ_KEY => match save_tikz(&treebank_model.borrow()) {
+                Ok(filename) => println!("Saved tree to: {}", filename),
+                Err(err) => eprintln!("Error writing dot output: {}", err),
+            },
+            ZOOM_IN_KEY => {
+                let mut widget_mut = dep_widget.borrow_mut();
+                widget_mut.zoom_in();
+                widget_mut.queue_draw();
+            }
+            ZOOM_OUT_KEY => {
+                let mut widget_mut = dep_widget.borrow_mut();
+                widget_mut.zoom_out();
+                widget_mut.queue_draw();
+            }
+            _ => (),
+        }
+        Inhibit(false)
+    });
+}
+
+fn save_dot(treebank_model: &StatefulTreebankModel) -> Result<String> {
+    let dot = treebank_model.graph().dot()?;
+    let filename = format!("s{}.dot", treebank_model.idx());
+    let mut writer = BufWriter::new(File::create(&filename)?);
+    writer.write_all(dot.as_bytes())?;
+    Ok(filename)
+}
+
+fn save_tikz(treebank_model: &StatefulTreebankModel) -> Result<String> {
+    let tikz = treebank_model.graph().tikz()?;
+    let filename = format!("s{}.tikz", treebank_model.idx());
+    let mut writer = BufWriter::new(File::create(&filename)?);
+    writer.write_all(tikz.as_bytes())?;
+    Ok(filename)
 }
