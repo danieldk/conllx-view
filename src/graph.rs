@@ -10,47 +10,37 @@ pub struct DependencyNode {
 #[derive(Clone)]
 pub struct DependencyGraph(pub Graph<DependencyNode, String, Directed>);
 
-pub fn sentence_to_graph(sentence: Sentence, projective: bool) -> DependencyGraph {
-    let mut g = Graph::new();
+impl From<Sentence> for DependencyGraph {
+    fn from(sentence: Sentence) -> Self {
+        let mut g = Graph::new();
 
-    let nodes: Vec<_> = sentence
-        .into_iter()
-        .enumerate()
-        .map(|(offset, token)| {
-            g.add_node(DependencyNode {
-                token: token.clone(),
-                offset: offset,
+        let nodes: Vec<_> = sentence
+            .into_iter()
+            .enumerate()
+            .map(|(offset, token)| {
+                g.add_node(DependencyNode {
+                    token: token.clone(),
+                    offset: offset,
+                })
             })
-        })
-        .collect();
+            .collect();
 
-    for (idx, node_idx) in nodes.iter().enumerate() {
-        let head = if projective {
-            g[*node_idx].token.p_head()
-        } else {
-            g[*node_idx].token.head()
-        };
+        for (idx, node_idx) in nodes.iter().enumerate() {
+            let head = g[*node_idx].token.head();
 
-        let rel = if projective {
-            g[*node_idx]
-                .token
-                .p_head_rel()
-                .expect("Dependency relation missing")
-                .to_owned()
-        } else {
-            g[*node_idx]
+            let rel = g[*node_idx]
                 .token
                 .head_rel()
                 .expect("Dependency relation missing")
-                .to_owned()
-        };
+                .to_owned();
 
-        let head = head.expect("Token does not have a head");
+            let head = head.expect("Token does not have a head");
 
-        if head != 0 {
-            g.add_edge(nodes[head - 1], nodes[idx], rel);
+            if head != 0 {
+                g.add_edge(nodes[head - 1], nodes[idx], rel);
+            }
         }
-    }
 
-    DependencyGraph(g)
+        DependencyGraph(g)
+    }
 }

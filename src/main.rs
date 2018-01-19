@@ -26,7 +26,6 @@ mod error;
 use error::Result;
 
 mod graph;
-use graph::sentence_to_graph;
 
 #[macro_use]
 mod macros;
@@ -80,7 +79,7 @@ fn main() {
 
     let dep_graph_iter = reader.into_iter().map(|sent| {
         let sent = sent.or_exit("Cannot read sentence", 1);
-        sentence_to_graph(sent, false)
+        sent.into()
     });
 
     let treebank_model = StatefulTreebankModel::from_iter(dep_graph_iter);
