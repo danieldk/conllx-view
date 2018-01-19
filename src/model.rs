@@ -43,10 +43,6 @@ impl StatefulTreebankModel {
             .expect("Stateful model has invalid index")
     }
 
-    //pub fn handle(&self) -> Result<Handle> {
-    //    self.inner.handle(self.idx)
-    //}
-
     pub fn idx(&self) -> usize {
         self.idx
     }
