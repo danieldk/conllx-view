@@ -1,26 +1,16 @@
-use std::fmt::Write as FmtWrite;
 use std::io::{Read, Write};
 use std::iter::FromIterator;
 use std::process::{Command, Stdio};
 
-use itertools::Itertools;
 use rsvg::Handle;
 
 use error::Result;
-use graph::DependencyGraph;
+use graph::{DependencyGraph, Dot};
 
 pub struct StatefulTreebankModel {
     inner: TreebankModel,
     idx: usize,
     callbacks: Vec<Box<Fn(&StatefulTreebankModel)>>,
-}
-
-pub trait DependencyTreeDot {
-    fn dependency_tree_dot(&self) -> Result<String>;
-}
-
-pub trait DependencyTreeTikz {
-    fn dependency_tree_tikz(&self) -> Result<String>;
 }
 
 impl StatefulTreebankModel {
@@ -52,6 +42,12 @@ impl StatefulTreebankModel {
         self.set_idx(0);
     }
 
+    pub fn graph(&self) -> &DependencyGraph {
+        self.inner
+            .graph(self.idx)
+            .expect("Stateful model has invalid index")
+    }
+
     pub fn handle(&self) -> Result<Handle> {
         self.inner.handle(self.idx)
     }
@@ -81,22 +77,6 @@ impl StatefulTreebankModel {
 
         self.callbacks();
     }
-
-    pub fn tokens(&self) -> Vec<&str> {
-        self.inner.tokens(self.idx)
-    }
-}
-
-impl DependencyTreeDot for StatefulTreebankModel {
-    fn dependency_tree_dot(&self) -> Result<String> {
-        graph_to_dot(&self.inner.treebank[self.idx])
-    }
-}
-
-impl DependencyTreeTikz for StatefulTreebankModel {
-    fn dependency_tree_tikz(&self) -> Result<String> {
-        graph_to_tikz(&self.inner.treebank[self.idx])
-    }
 }
 
 pub struct TreebankModel {
@@ -113,6 +93,10 @@ impl TreebankModel {
         }
     }
 
+    pub fn graph(&self, idx: usize) -> Option<&DependencyGraph> {
+        self.treebank.get(idx)
+    }
+
     pub fn handle(&self, idx: usize) -> Result<Handle> {
         let svg = self.svg(idx)?;
         Ok(Handle::new_from_data(svg.as_bytes())?)
@@ -123,19 +107,8 @@ impl TreebankModel {
     }
 
     fn svg(&self, idx: usize) -> Result<String> {
-        let dot = graph_to_dot(&self.treebank[idx])?;
+        let dot = self.treebank[idx].dot()?;
         dot_to_svg(&dot)
-    }
-
-    pub fn tokens(&self, idx: usize) -> Vec<&str> {
-        let graph = &self.treebank[idx].0;
-
-        let mut tokens = Vec::new();
-        for node_idx in graph.node_indices() {
-            tokens.push(graph[node_idx].token.form());
-        }
-
-        tokens
     }
 }
 
@@ -143,87 +116,6 @@ impl From<Vec<DependencyGraph>> for TreebankModel {
     fn from(vec: Vec<DependencyGraph>) -> Self {
         TreebankModel { treebank: vec }
     }
-}
-
-fn escape_str<S>(s: S) -> String
-where
-    S: AsRef<str>,
-{
-    s.as_ref().replace('"', r#"\""#)
-}
-
-fn graph_to_dot(graph: &DependencyGraph) -> Result<String> {
-    let mut dot = String::new();
-
-    dot.push_str("digraph deptree {\n");
-    dot.push_str("graph [charset = \"UTF-8\"]\n");
-    dot.push_str(
-        "node [shape=plaintext, height=0, width=0, fontsize=12, fontname=\"Helvetica\"]\n",
-    );
-
-    for node_idx in graph.0.node_indices() {
-        writeln!(
-            &mut dot,
-            r#"n{}[label="{}"];"#,
-            node_idx.index(),
-            escape_str(graph.0[node_idx].token.form())
-        )?;
-    }
-
-    dot.push_str("edge [color=\"#4b0082\", fontsize=\"8\", fontname=\"Courier New\"]\n");
-
-    for edge_idx in graph.0.edge_indices() {
-        let weight = &graph.0[edge_idx];
-        let (source, target) = graph.0.edge_endpoints(edge_idx).unwrap();
-
-        writeln!(
-            &mut dot,
-            r#"n{} -> n{}[label="{}"];"#,
-            source.index(),
-            target.index(),
-            escape_str(weight)
-        )?;
-    }
-
-    dot.push_str("}");
-
-    Ok(dot)
-}
-
-fn graph_to_tikz(graph: &DependencyGraph) -> Result<String> {
-    let mut dot = String::new();
-
-    dot.push_str("\\documentclass{standalone}\n\n");
-    dot.push_str("\\usepackage{tikz-dependency}\n\n");
-    dot.push_str("\\begin{document}\n\n");
-    dot.push_str("\\begin{dependency}\n");
-    dot.push_str("\\begin{deptext}");
-
-    dot.push_str(&graph
-        .0
-        .node_indices()
-        .map(|idx| graph.0[idx].token.form())
-        .join(" \\& "));
-
-    dot.push_str("\\\\\n\\end{deptext}\n");
-
-    for edge_idx in graph.0.edge_indices() {
-        let weight = &graph.0[edge_idx];
-        let (source, target) = graph.0.edge_endpoints(edge_idx).unwrap();
-
-        writeln!(
-            &mut dot,
-            "\\depedge{{{}}}{{{}}}{{{}}}",
-            source.index() + 1,
-            target.index() + 1,
-            escape_str(weight)
-        )?;
-    }
-
-    dot.push_str("\\end{dependency}\n\n");
-    dot.push_str("\\end{document}");
-
-    Ok(dot)
 }
 
 fn dot_to_svg(dot: &str) -> Result<String> {

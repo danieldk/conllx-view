@@ -13,7 +13,6 @@ use std::cell::RefCell;
 use std::env::args;
 use std::fs::File;
 use std::io::{BufWriter, Write};
-
 use std::process;
 use std::rc::Rc;
 
@@ -26,12 +25,13 @@ mod error;
 use error::Result;
 
 mod graph;
+use graph::{Dot, Tikz, Tokens};
 
 #[macro_use]
 mod macros;
 
 mod model;
-use model::{DependencyTreeDot, DependencyTreeTikz, StatefulTreebankModel};
+use model::StatefulTreebankModel;
 
 mod widgets;
 use widgets::{DependencyTreeWidget, SentenceWidget};
@@ -146,7 +146,7 @@ fn create_sentence_widget(
     let sent_widget = Rc::new(RefCell::new(SentenceWidget::new()));
 
     treebank_model.connect_update(clone!(sent_widget => move |model| {
-        let tokens = model.tokens();
+        let tokens = model.graph().tokens();
         sent_widget.borrow_mut().update(tokens.join(" "));
     }));
 
@@ -195,7 +195,7 @@ fn setup_key_event_handling(
 }
 
 fn save_dot(treebank_model: &StatefulTreebankModel) -> Result<String> {
-    let dot = treebank_model.dependency_tree_dot()?;
+    let dot = treebank_model.graph().dot()?;
     let filename = format!("s{}.dot", treebank_model.idx());
     let mut writer = BufWriter::new(File::create(&filename)?);
     writer.write_all(dot.as_bytes())?;
@@ -203,7 +203,7 @@ fn save_dot(treebank_model: &StatefulTreebankModel) -> Result<String> {
 }
 
 fn save_tikz(treebank_model: &StatefulTreebankModel) -> Result<String> {
-    let tikz = treebank_model.dependency_tree_tikz()?;
+    let tikz = treebank_model.graph().tikz()?;
     let filename = format!("s{}.tikz", treebank_model.idx());
     let mut writer = BufWriter::new(File::create(&filename)?);
     writer.write_all(tikz.as_bytes())?;
