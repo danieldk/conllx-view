@@ -16,6 +16,7 @@ use std::io::{BufWriter, Write};
 use std::process;
 use std::rc::Rc;
 
+use rsvg::Handle;
 use getopts::Options;
 use gtk::prelude::*;
 use gtk::PolicyType;
@@ -25,7 +26,7 @@ mod error;
 use error::Result;
 
 mod graph;
-use graph::{Dot, Tikz, Tokens};
+use graph::{Dot, Svg, Tikz, Tokens};
 
 #[macro_use]
 mod macros;
@@ -132,8 +133,10 @@ fn create_dependency_tree_widget(
 
     // Notify widget when another tree is selected.
     treebank_model.connect_update(clone!(dep_widget => move |model| {
-        if let Ok(handle) = model.handle() {
-            dep_widget.borrow_mut().update(handle);
+        if let Ok(svg) = model.graph().svg() {
+            if let Ok(handle) = Handle::new_from_data(svg.as_bytes()) {
+                dep_widget.borrow_mut().update(handle);
+            }
         }
     }));
 

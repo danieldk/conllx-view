@@ -1,4 +1,6 @@
-use std::fmt::Write;
+use std::fmt::Write as FmtWrite;
+use std::io::{Read, Write};
+use std::process::{Command, Stdio};
 
 use conllx::{Sentence, Token};
 use itertools::Itertools;
@@ -83,6 +85,35 @@ impl Tokens for DependencyGraph {
 
         tokens
     }
+}
+
+pub trait Svg {
+    fn svg(&self) -> Result<String>;
+}
+
+impl Svg for DependencyGraph {
+    fn svg(&self) -> Result<String> {
+        let dot = self.dot()?;
+        dot_to_svg(&dot)
+    }
+}
+
+fn dot_to_svg(dot: &str) -> Result<String> {
+    // FIXME: bind against C library?
+
+    // Spawn Graphviz dot for rendering SVG (Fixme: bind against C library?).
+    let process = Command::new("dot")
+        .arg("-Tsvg")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+
+    process.stdin.unwrap().write_all(dot.as_bytes())?;
+
+    let mut svg = String::new();
+    process.stdout.unwrap().read_to_string(&mut svg)?;
+
+    Ok(svg)
 }
 
 fn escape_str<S>(s: S) -> String
