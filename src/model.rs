@@ -5,10 +5,19 @@ use graph::DependencyGraph;
 pub struct StatefulTreebankModel {
     inner: TreebankModel,
     idx: usize,
-    callbacks: Vec<Box<Fn(&StatefulTreebankModel)>>,
+    callbacks: Vec<Box<Fn(&StatefulTreebankModel) + Send + 'static>>,
 }
 
 impl StatefulTreebankModel {
+    pub fn new() -> Self {
+        StatefulTreebankModel {
+            inner: TreebankModel::new(),
+            idx: 0,
+            callbacks: Vec::new(),
+        }
+    }
+
+    #[allow(dead_code)]
     pub fn from_iter<I>(iter: I) -> Self
     where
         I: IntoIterator<Item = DependencyGraph>,
@@ -28,7 +37,7 @@ impl StatefulTreebankModel {
 
     pub fn connect_update<F>(&mut self, callback: F)
     where
-        F: 'static + Fn(&StatefulTreebankModel),
+        F: 'static + Fn(&StatefulTreebankModel) + Send,
     {
         self.callbacks.push(Box::new(callback));
     }
@@ -61,6 +70,10 @@ impl StatefulTreebankModel {
         self.set_idx(idx - 1);
     }
 
+    pub fn push(&mut self, graph: DependencyGraph) {
+        self.inner.push(graph);
+    }
+
     fn set_idx(&mut self, idx: usize) {
         if idx < self.len() {
             self.idx = idx;
@@ -75,6 +88,12 @@ pub struct TreebankModel {
 }
 
 impl TreebankModel {
+    pub fn new() -> Self {
+        TreebankModel {
+            treebank: Vec::new(),
+        }
+    }
+
     pub fn from_iter<I>(iter: I) -> Self
     where
         I: IntoIterator<Item = DependencyGraph>,
@@ -90,6 +109,10 @@ impl TreebankModel {
 
     pub fn len(&self) -> usize {
         self.treebank.len()
+    }
+
+    pub fn push(&mut self, graph: DependencyGraph) {
+        self.treebank.push(graph);
     }
 }
 
