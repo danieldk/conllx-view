@@ -2,6 +2,7 @@ extern crate cairo;
 extern crate conllx;
 #[macro_use]
 extern crate error_chain;
+
 extern crate getopts;
 extern crate glib;
 extern crate gtk;
@@ -27,7 +28,7 @@ use gtk::PolicyType;
 use stdinout::{Input, OrExit};
 
 mod error;
-use error::Result;
+use error::*;
 
 mod graph;
 use graph::{DependencyGraph, Dot, Svg, Tikz, Tokens};
@@ -152,7 +153,8 @@ fn create_dependency_tree_widget(
 
     // Notify widget when another tree is selected.
     treebank_model.connect_update(move |model| {
-        tx.send(model.graph().clone())
+        let graph = ok_or!(model.graph(), return);
+        tx.send(graph.clone())
             .expect("Could not send data to channel");
         glib::idle_add(|| {
             DEPTREE_KEY.with(|key| {
@@ -190,7 +192,8 @@ fn create_sentence_widget(
     }));
 
     treebank_model.connect_update(move |model| {
-        tx.send(model.graph().clone())
+        let graph = ok_or!(model.graph(), return);
+        tx.send(graph.clone())
             .expect("Could not send data to channel");
         glib::idle_add(|| {
             SENTENCE_KEY.with(|key| {
@@ -251,17 +254,31 @@ fn setup_key_event_handling(
 }
 
 fn save_dot(treebank_model: &StatefulTreebankModel) -> Result<String> {
-    let dot = treebank_model.graph().dot()?;
+    let graph = match treebank_model.graph() {
+        Some(graph) => graph,
+        None => return Err(ErrorKind::NoGraphSelected.into()),
+    };
+
     let filename = format!("s{}.dot", treebank_model.idx());
     let mut writer = BufWriter::new(File::create(&filename)?);
+
+    let dot = graph.dot()?;
     writer.write_all(dot.as_bytes())?;
+
     Ok(filename)
 }
 
 fn save_tikz(treebank_model: &StatefulTreebankModel) -> Result<String> {
-    let tikz = treebank_model.graph().tikz()?;
+    let graph = match treebank_model.graph() {
+        Some(graph) => graph,
+        None => return Err(ErrorKind::NoGraphSelected.into()),
+    };
+
     let filename = format!("s{}.tikz", treebank_model.idx());
     let mut writer = BufWriter::new(File::create(&filename)?);
+
+    let tikz = graph.tikz()?;
     writer.write_all(tikz.as_bytes())?;
+
     Ok(filename)
 }

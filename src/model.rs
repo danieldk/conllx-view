@@ -46,10 +46,10 @@ impl StatefulTreebankModel {
         self.set_idx(0);
     }
 
-    pub fn graph(&self) -> &DependencyGraph {
-        self.inner
-            .graph(self.idx)
-            .expect("Stateful model has invalid index")
+    /// Return the current dependency graph. Returns `None` when the
+    /// treebank is currently empty.
+    pub fn graph(&self) -> Option<&DependencyGraph> {
+        self.inner.graph(self.idx)
     }
 
     pub fn idx(&self) -> usize {
