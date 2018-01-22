@@ -56,6 +56,10 @@ impl StatefulTreebankModel {
         self.idx
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
     pub fn len(&self) -> usize {
         self.inner.len()
     }
@@ -71,7 +75,13 @@ impl StatefulTreebankModel {
     }
 
     pub fn push(&mut self, graph: DependencyGraph) {
+        let first = self.is_empty();
+
         self.inner.push(graph);
+
+        if first {
+            self.callbacks();
+        }
     }
 
     fn set_idx(&mut self, idx: usize) {
@@ -105,6 +115,10 @@ impl TreebankModel {
 
     pub fn graph(&self, idx: usize) -> Option<&DependencyGraph> {
         self.treebank.get(idx)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.treebank.is_empty()
     }
 
     pub fn len(&self) -> usize {
