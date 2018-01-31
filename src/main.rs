@@ -4,6 +4,7 @@ extern crate conllx;
 extern crate error_chain;
 
 extern crate getopts;
+extern crate gio;
 extern crate glib;
 extern crate gtk;
 extern crate itertools;
@@ -21,10 +22,11 @@ use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Receiver};
 use std::thread;
 
-use rsvg::Handle;
 use getopts::Options;
+use gio::{ApplicationExt, ApplicationExtManual};
 use gtk::prelude::*;
 use gtk::PolicyType;
+use rsvg::Handle;
 use stdinout::{Input, OrExit};
 
 mod error;
@@ -99,12 +101,25 @@ fn main() {
         }
     }));
 
-    create_gui(800, 600, treebank_model);
+    let application =
+        gtk::Application::new("eu.danieldk.conllx-view", gio::ApplicationFlags::empty())
+            .expect("Initialization failed");
 
-    gtk::main();
+    application.connect_startup(move |app| {
+        create_gui(app, 800, 600, treebank_model.clone());
+    });
+
+    application.connect_activate(|_| {});
+
+    application.run(&args);
 }
 
-fn create_gui(width: i32, height: i32, treebank_model: Arc<Mutex<StatefulTreebankModel>>) {
+fn create_gui(
+    application: &gtk::Application,
+    width: i32,
+    height: i32,
+    treebank_model: Arc<Mutex<StatefulTreebankModel>>,
+) {
     let dep_widget = create_dependency_tree_widget(&mut treebank_model.lock().unwrap());
 
     let scroll = gtk::ScrolledWindow::new(None, None);
@@ -117,7 +132,7 @@ fn create_gui(width: i32, height: i32, treebank_model: Arc<Mutex<StatefulTreeban
     vbox.pack_start(&scroll, true, true, 0);
     vbox.pack_start(sent_widget.borrow().inner(), false, false, 0);
 
-    let window = gtk::Window::new(gtk::WindowType::Toplevel);
+    let window = gtk::ApplicationWindow::new(application);
     window.set_title("conllx-view");
     window.set_border_width(10);
 
@@ -213,10 +228,12 @@ fn create_sentence_widget(
 }
 
 fn setup_key_event_handling(
-    window: &gtk::Window,
+    window: &gtk::ApplicationWindow,
     treebank_model: Arc<Mutex<StatefulTreebankModel>>,
     dep_widget: Rc<RefCell<DependencyTreeWidget>>,
 ) {
+    let window_clone = window.clone();
+
     window.connect_key_press_event(move |_, key_event| {
         println!("key: {}", key_event.get_keyval());
         match key_event.get_keyval() {
@@ -231,7 +248,7 @@ fn setup_key_event_handling(
                 treebank_model.lock().unwrap().previous();
             }
             QUIT_KEY => {
-                gtk::main_quit();
+                window_clone.destroy();
             }
             TIKZ_KEY => match save_tikz(&treebank_model.lock().unwrap()) {
                 Ok(filename) => println!("Saved tree to: {}", filename),
