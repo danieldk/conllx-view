@@ -26,7 +26,7 @@ use std::thread;
 use getopts::Options;
 use gio::{ApplicationExt, ApplicationExtManual};
 use gtk::prelude::*;
-use gtk::PolicyType;
+use gtk::{HeaderBarExt, LabelExt, PolicyType};
 use rsvg::Handle;
 use stdinout::{Input, OrExit};
 
@@ -133,8 +133,10 @@ fn create_gui(
     vbox.pack_start(&scroll, true, true, 0);
     vbox.pack_start(sent_widget.borrow().inner(), false, false, 0);
 
+    let header_bar = create_header_bar(&mut treebank_model.lock().unwrap());
+
     let window = gtk::ApplicationWindow::new(application);
-    window.set_title("conllx-view");
+    window.set_titlebar(&header_bar);
     window.set_border_width(10);
 
     setup_key_event_handling(&window, treebank_model.clone(), dep_widget.clone());
@@ -150,6 +152,41 @@ fn create_gui(
     window.show_all();
 
     treebank_model.lock().unwrap().first();
+}
+
+thread_local!(
+    static TREE_INDEX_KEY: RefCell<Option<(Rc<RefCell<gtk::Label>>, Receiver<(usize, usize)>)>> = RefCell::new(None)
+);
+
+fn create_header_bar(treebank_model: &mut StatefulTreebankModel) -> gtk::HeaderBar {
+    let idx_label = Rc::new(RefCell::new(gtk::Label::new("")));
+
+    let (tx, rx) = channel();
+
+    TREE_INDEX_KEY.with(clone!(idx_label => move |global| {
+        *global.borrow_mut() = Some((idx_label, rx))
+    }));
+
+    treebank_model.connect_update(ModelUpdate::Any, move |model| {
+        tx.send((model.idx(), model.len())).expect("Could not send data to channel");
+        glib::idle_add(|| {
+            TREE_INDEX_KEY.with(|key| {
+                if let Some((ref label, ref rx)) = *key.borrow() {
+                    if let Ok((index, len)) = rx.try_recv() {
+                        label.borrow_mut().set_text(&format!("{} of {}", index + 1, len));
+                    }
+                }
+            });
+
+            glib::Continue(false)
+        });
+    });
+
+    let header_bar = gtk::HeaderBar::new();
+    header_bar.set_title("conllx-view");
+    header_bar.pack_start(&*idx_label.borrow());
+
+    header_bar
 }
 
 thread_local!(
@@ -277,7 +314,7 @@ fn save_dot(treebank_model: &StatefulTreebankModel) -> Result<String> {
         None => return Err(ErrorKind::NoGraphSelected.into()),
     };
 
-    let filename = format!("s{}.dot", treebank_model.idx());
+    let filename = format!("s{}.dot", treebank_model.idx() + 1);
     let mut writer = BufWriter::new(File::create(&filename)?);
 
     let dot = graph.dot()?;
@@ -292,7 +329,7 @@ fn save_tikz(treebank_model: &StatefulTreebankModel) -> Result<String> {
         None => return Err(ErrorKind::NoGraphSelected.into()),
     };
 
-    let filename = format!("s{}.tikz", treebank_model.idx());
+    let filename = format!("s{}.tikz", treebank_model.idx() + 1);
     let mut writer = BufWriter::new(File::create(&filename)?);
 
     let tikz = graph.tikz()?;

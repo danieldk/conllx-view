@@ -5,6 +5,7 @@ use graph::DependencyGraph;
 
 #[derive(EnumMap)]
 pub enum ModelUpdate {
+    Any,
     TreeSelection,
     TreebankLen,
 }
@@ -38,6 +39,10 @@ impl StatefulTreebankModel {
 
     fn callbacks(&mut self, update: ModelUpdate) {
         for callback in &self.callbacks[update] {
+            (*callback)(&self)
+        }
+
+        for callback in &self.callbacks[ModelUpdate::Any] {
             (*callback)(&self)
         }
     }
