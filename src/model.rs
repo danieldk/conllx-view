@@ -1,11 +1,18 @@
 use std::iter::FromIterator;
 
+use enum_map::EnumMap;
 use graph::DependencyGraph;
+
+#[derive(EnumMap)]
+pub enum ModelUpdate {
+    TreeSelection,
+    TreebankLen,
+}
 
 pub struct StatefulTreebankModel {
     inner: TreebankModel,
     idx: usize,
-    callbacks: Vec<Box<Fn(&StatefulTreebankModel) + Send + 'static>>,
+    callbacks: EnumMap<ModelUpdate, Vec<Box<Fn(&StatefulTreebankModel) + Send + 'static>>>,
 }
 
 impl StatefulTreebankModel {
@@ -13,7 +20,7 @@ impl StatefulTreebankModel {
         StatefulTreebankModel {
             inner: TreebankModel::new(),
             idx: 0,
-            callbacks: Vec::new(),
+            callbacks: EnumMap::new(),
         }
     }
 
@@ -25,21 +32,21 @@ impl StatefulTreebankModel {
         StatefulTreebankModel {
             inner: TreebankModel::from_iter(iter),
             idx: 0,
-            callbacks: Vec::new(),
+            callbacks: EnumMap::new(),
         }
     }
 
-    fn callbacks(&mut self) {
-        for callback in &self.callbacks {
+    fn callbacks(&mut self, update: ModelUpdate) {
+        for callback in &self.callbacks[update] {
             (*callback)(&self)
         }
     }
 
-    pub fn connect_update<F>(&mut self, callback: F)
+    pub fn connect_update<F>(&mut self, update: ModelUpdate, callback: F)
     where
         F: 'static + Fn(&StatefulTreebankModel) + Send,
     {
-        self.callbacks.push(Box::new(callback));
+        self.callbacks[update].push(Box::new(callback));
     }
 
     pub fn first(&mut self) {
@@ -79,8 +86,10 @@ impl StatefulTreebankModel {
 
         self.inner.push(graph);
 
+        self.callbacks(ModelUpdate::TreebankLen);
+
         if first {
-            self.callbacks();
+            self.callbacks(ModelUpdate::TreeSelection);
         }
     }
 
@@ -89,7 +98,7 @@ impl StatefulTreebankModel {
             self.idx = idx;
         }
 
-        self.callbacks();
+        self.callbacks(ModelUpdate::TreeSelection);
     }
 }
 

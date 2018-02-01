@@ -1,8 +1,9 @@
 extern crate cairo;
 extern crate conllx;
 #[macro_use]
+extern crate enum_map;
+#[macro_use]
 extern crate error_chain;
-
 extern crate getopts;
 extern crate gio;
 extern crate glib;
@@ -39,7 +40,7 @@ use graph::{DependencyGraph, Dot, Svg, Tikz, Tokens};
 mod macros;
 
 mod model;
-use model::StatefulTreebankModel;
+use model::{ModelUpdate, StatefulTreebankModel};
 
 mod widgets;
 use widgets::{DependencyTreeWidget, SentenceWidget};
@@ -167,7 +168,7 @@ fn create_dependency_tree_widget(
     }));
 
     // Notify widget when another tree is selected.
-    treebank_model.connect_update(move |model| {
+    treebank_model.connect_update(ModelUpdate::TreeSelection, move |model| {
         let graph = ok_or!(model.graph(), return);
         tx.send(graph.clone())
             .expect("Could not send data to channel");
@@ -206,7 +207,7 @@ fn create_sentence_widget(
         *global.borrow_mut() = Some((sent_widget, rx));
     }));
 
-    treebank_model.connect_update(move |model| {
+    treebank_model.connect_update(ModelUpdate::TreeSelection, move |model| {
         let graph = ok_or!(model.graph(), return);
         tx.send(graph.clone())
             .expect("Could not send data to channel");
