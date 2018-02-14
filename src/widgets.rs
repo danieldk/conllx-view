@@ -3,7 +3,7 @@ use std::ops::Deref;
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use gtk::{DrawingArea, TextView, WrapMode};
+use gtk::{DrawingArea, TextView};
 use rsvg::{Handle, HandleExt};
 
 pub struct DependencyTreeWidget {
@@ -21,9 +21,9 @@ impl Deref for DependencyTreeWidget {
 }
 
 impl DependencyTreeWidget {
-    pub fn new() -> Self {
+    pub fn from_drawing_area(drawing_area: &DrawingArea) -> Self {
         let mut widget = DependencyTreeWidget {
-            drawing_area: DrawingArea::new(),
+            drawing_area: drawing_area.clone(),
             handle: Rc::new(RefCell::new(None)),
             scale: Rc::new(RefCell::new(None)),
         };
@@ -31,10 +31,6 @@ impl DependencyTreeWidget {
         widget.setup_drawing_area();
 
         widget
-    }
-
-    pub fn inner(&self) -> &DrawingArea {
-        &self.drawing_area
     }
 
     fn setup_drawing_area(&mut self) {
@@ -132,16 +128,10 @@ impl Deref for SentenceWidget {
 }
 
 impl SentenceWidget {
-    pub fn new() -> Self {
-        let text_view = TextView::new();
-        text_view.set_editable(false);
-        text_view.set_wrap_mode(WrapMode::Word);
-
-        SentenceWidget { text_view }
-    }
-
-    pub fn inner(&self) -> &TextView {
-        &self.text_view
+    pub fn from_text_view(text_view: &TextView) -> Self {
+        SentenceWidget {
+            text_view: text_view.clone(),
+        }
     }
 
     pub fn update(&mut self, sentence: String) {

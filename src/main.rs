@@ -26,7 +26,7 @@ use std::thread;
 use getopts::Options;
 use gio::{ApplicationExt, ApplicationExtManual};
 use gtk::prelude::*;
-use gtk::{HeaderBarExt, LabelExt, PolicyType};
+use gtk::LabelExt;
 use rsvg::Handle;
 use stdinout::{Input, OrExit};
 
@@ -121,45 +121,40 @@ fn create_gui(
     height: i32,
     treebank_model: Arc<Mutex<StatefulTreebankModel>>,
 ) {
-    let dep_widget = create_dependency_tree_widget(&mut treebank_model.lock().unwrap());
+    let glade_src = include_str!("viewer.glade");
+    let builder = gtk::Builder::new_from_string(glade_src);
+    builder.set_application(application);
 
-    let scroll = gtk::ScrolledWindow::new(None, None);
-    scroll.set_policy(PolicyType::Automatic, PolicyType::Automatic);
-    scroll.add(dep_widget.borrow().inner());
+    let window: gtk::ApplicationWindow = builder
+        .get_object("viewer_window")
+        .expect("Cannot get main window");
+    window.set_application(application);
 
-    let sent_widget = create_sentence_widget(&mut treebank_model.lock().unwrap());
+    let dep_widget = create_dependency_tree_widget(&mut treebank_model.lock().unwrap(), &builder);
 
-    let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    vbox.pack_start(&scroll, true, true, 0);
-    vbox.pack_start(sent_widget.borrow().inner(), false, false, 0);
-
-    let header_bar = create_header_bar(&mut treebank_model.lock().unwrap());
-
-    let window = gtk::ApplicationWindow::new(application);
-    window.set_titlebar(&header_bar);
-    window.set_border_width(10);
-
+    setup_sentence_widget(&mut treebank_model.lock().unwrap(), &builder);
+    setup_header_bar(&mut treebank_model.lock().unwrap(), &builder);
     setup_key_event_handling(&window, treebank_model.clone(), dep_widget.clone());
 
     window.set_default_size(width, height);
-
     window.connect_delete_event(|_, _| {
         gtk::main_quit();
         Inhibit(false)
     });
 
-    window.add(&vbox);
     window.show_all();
 
     treebank_model.lock().unwrap().first();
 }
 
 thread_local!(
-    static TREE_INDEX_KEY: RefCell<Option<(Rc<RefCell<gtk::Label>>, Receiver<(usize, usize)>)>> = RefCell::new(None)
+    static TREE_INDEX_KEY: RefCell<Option<(gtk::Label, Receiver<(usize, usize)>)>> = RefCell::new(None)
 );
 
-fn create_header_bar(treebank_model: &mut StatefulTreebankModel) -> gtk::HeaderBar {
-    let idx_label = Rc::new(RefCell::new(gtk::Label::new("")));
+fn setup_header_bar(treebank_model: &mut StatefulTreebankModel, builder: &gtk::Builder) {
+    let idx_label: gtk::Label = builder
+        .get_object("idx_label")
+        .expect("Cannot get sentence index label");
 
     let (tx, rx) = channel();
 
@@ -168,12 +163,13 @@ fn create_header_bar(treebank_model: &mut StatefulTreebankModel) -> gtk::HeaderB
     }));
 
     treebank_model.connect_update(ModelUpdate::Any, move |model| {
-        tx.send((model.idx(), model.len())).expect("Could not send data to channel");
+        tx.send((model.idx(), model.len()))
+            .expect("Could not send data to channel");
         glib::idle_add(|| {
             TREE_INDEX_KEY.with(|key| {
                 if let Some((ref label, ref rx)) = *key.borrow() {
                     if let Ok((index, len)) = rx.try_recv() {
-                        label.borrow_mut().set_text(&format!("{} of {}", index + 1, len));
+                        label.set_text(&format!("{} of {}", index + 1, len));
                     }
                 }
             });
@@ -181,12 +177,6 @@ fn create_header_bar(treebank_model: &mut StatefulTreebankModel) -> gtk::HeaderB
             glib::Continue(false)
         });
     });
-
-    let header_bar = gtk::HeaderBar::new();
-    header_bar.set_title("conllx-view");
-    header_bar.pack_start(&*idx_label.borrow());
-
-    header_bar
 }
 
 thread_local!(
@@ -195,8 +185,14 @@ thread_local!(
 
 fn create_dependency_tree_widget(
     treebank_model: &mut StatefulTreebankModel,
+    builder: &gtk::Builder,
 ) -> Rc<RefCell<DependencyTreeWidget>> {
-    let dep_widget = Rc::new(RefCell::new(DependencyTreeWidget::new()));
+    let drawing_area: gtk::DrawingArea = builder
+        .get_object("dependency_tree_area")
+        .expect("Cannot get drawing area for dependency trees");
+    let dep_widget = Rc::new(RefCell::new(DependencyTreeWidget::from_drawing_area(
+        &drawing_area,
+    )));
 
     let (tx, rx) = channel();
 
@@ -230,19 +226,20 @@ fn create_dependency_tree_widget(
 }
 
 thread_local!(
-    static SENTENCE_KEY: RefCell<Option<(Rc<RefCell<SentenceWidget>>, Receiver<DependencyGraph>)>> = RefCell::new(None)
+    static SENTENCE_KEY: RefCell<Option<(SentenceWidget, Receiver<DependencyGraph>)>> = RefCell::new(None)
 );
 
-fn create_sentence_widget(
-    treebank_model: &mut StatefulTreebankModel,
-) -> Rc<RefCell<SentenceWidget>> {
-    let sent_widget = Rc::new(RefCell::new(SentenceWidget::new()));
+fn setup_sentence_widget(treebank_model: &mut StatefulTreebankModel, builder: &gtk::Builder) {
+    let sentence_view: gtk::TextView = builder
+        .get_object("sentence_view")
+        .expect("Cannot get sentence text view");
+    let sent_widget = SentenceWidget::from_text_view(&sentence_view);
 
     let (tx, rx) = channel();
 
-    SENTENCE_KEY.with(clone!(sent_widget => move |global| {
+    SENTENCE_KEY.with(move |global| {
         *global.borrow_mut() = Some((sent_widget, rx));
-    }));
+    });
 
     treebank_model.connect_update(ModelUpdate::TreeSelection, move |model| {
         let graph = ok_or!(model.graph(), return);
@@ -250,10 +247,10 @@ fn create_sentence_widget(
             .expect("Could not send data to channel");
         glib::idle_add(|| {
             SENTENCE_KEY.with(|key| {
-                if let Some((ref widget, ref rx)) = *key.borrow() {
+                if let Some((ref mut widget, ref rx)) = *key.borrow_mut() {
                     if let Ok(graph) = rx.try_recv() {
                         let tokens = graph.tokens();
-                        widget.borrow_mut().update(tokens.join(" "));
+                        widget.update(tokens.join(" "));
                     }
                 }
             });
@@ -261,8 +258,6 @@ fn create_sentence_widget(
             glib::Continue(false)
         });
     });
-
-    sent_widget
 }
 
 fn setup_key_event_handling(
