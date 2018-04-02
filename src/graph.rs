@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
 use conllx::{Features, Sentence, Token};
-use failure::Error;
+use failure::{Error, ResultExt};
 use itertools::Itertools;
 use petgraph::{Directed, Graph};
 
@@ -105,12 +105,21 @@ fn dot_to_svg(dot: &str) -> Result<String, Error> {
         .arg("-Tsvg")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .spawn()?;
+        .spawn()
+        .context("Could not start Graphviz dot")?;
 
-    process.stdin.unwrap().write_all(dot.as_bytes())?;
+    process
+        .stdin
+        .unwrap()
+        .write_all(dot.as_bytes())
+        .context("Could not write graph to dot stdin")?;
 
     let mut svg = String::new();
-    process.stdout.unwrap().read_to_string(&mut svg)?;
+    process
+        .stdout
+        .unwrap()
+        .read_to_string(&mut svg)
+        .context("Could not read graph SVG from dot stdout")?;
 
     Ok(svg)
 }

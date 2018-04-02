@@ -210,9 +210,14 @@ fn create_dependency_tree_widget(
             DEPTREE_KEY.with(|key| {
                 if let Some((ref widget, ref rx)) = *key.borrow() {
                     if let Ok(graph) = rx.try_recv() {
-                        if let Ok(svg) = graph.svg() {
-                            if let Ok(handle) = Handle::new_from_data(svg.as_bytes()) {
-                                widget.borrow_mut().update(handle);
+                        match graph.svg() {
+                            Ok(svg) => {
+                                if let Ok(handle) = Handle::new_from_data(svg.as_bytes()) {
+                                    widget.borrow_mut().update(handle);
+                                }
+                            }
+                            Err(err) => {
+                                eprintln!("Cannot render tree: {}", err);
                             }
                         }
                     }
