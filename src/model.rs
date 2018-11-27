@@ -1,7 +1,7 @@
 use std::iter::FromIterator;
 
+use conllx::graph::Sentence;
 use enum_map::EnumMap;
-use graph::DependencyGraph;
 
 #[derive(EnumMap)]
 pub enum ModelUpdate {
@@ -28,7 +28,7 @@ impl StatefulTreebankModel {
     #[allow(dead_code)]
     pub fn from_iter<I>(iter: I) -> Self
     where
-        I: IntoIterator<Item = DependencyGraph>,
+        I: IntoIterator<Item = Sentence>,
     {
         StatefulTreebankModel {
             inner: TreebankModel::from_iter(iter),
@@ -60,7 +60,7 @@ impl StatefulTreebankModel {
 
     /// Return the current dependency graph. Returns `None` when the
     /// treebank is currently empty.
-    pub fn graph(&self) -> Option<&DependencyGraph> {
+    pub fn graph(&self) -> Option<&Sentence> {
         self.inner.graph(self.idx)
     }
 
@@ -86,7 +86,7 @@ impl StatefulTreebankModel {
         self.set_idx(idx - 1);
     }
 
-    pub fn push(&mut self, graph: DependencyGraph) {
+    pub fn push(&mut self, graph: Sentence) {
         let first = self.is_empty();
 
         self.inner.push(graph);
@@ -108,7 +108,7 @@ impl StatefulTreebankModel {
 }
 
 pub struct TreebankModel {
-    treebank: Vec<DependencyGraph>,
+    treebank: Vec<Sentence>,
 }
 
 impl TreebankModel {
@@ -120,14 +120,14 @@ impl TreebankModel {
 
     pub fn from_iter<I>(iter: I) -> Self
     where
-        I: IntoIterator<Item = DependencyGraph>,
+        I: IntoIterator<Item = Sentence>,
     {
         TreebankModel {
             treebank: Vec::from_iter(iter),
         }
     }
 
-    pub fn graph(&self, idx: usize) -> Option<&DependencyGraph> {
+    pub fn graph(&self, idx: usize) -> Option<&Sentence> {
         self.treebank.get(idx)
     }
 
@@ -139,13 +139,13 @@ impl TreebankModel {
         self.treebank.len()
     }
 
-    pub fn push(&mut self, graph: DependencyGraph) {
+    pub fn push(&mut self, graph: Sentence) {
         self.treebank.push(graph);
     }
 }
 
-impl From<Vec<DependencyGraph>> for TreebankModel {
-    fn from(vec: Vec<DependencyGraph>) -> Self {
+impl From<Vec<Sentence>> for TreebankModel {
+    fn from(vec: Vec<Sentence>) -> Self {
         TreebankModel { treebank: vec }
     }
 }

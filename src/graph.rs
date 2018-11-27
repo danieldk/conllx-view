@@ -2,60 +2,16 @@ use std::fmt::Write as FmtWrite;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
-use conllx::{Features, Sentence, Token};
+use conllx::graph::{Node, Sentence};
+use conllx::token::Features;
 use failure::{Error, ResultExt};
 use itertools::Itertools;
-use petgraph::{Directed, Graph};
-
-#[derive(Clone, Debug)]
-pub struct DependencyNode {
-    pub token: Token,
-    pub offset: usize,
-}
-
-#[derive(Clone)]
-pub struct DependencyGraph(pub Graph<DependencyNode, String, Directed>);
-
-impl From<Sentence> for DependencyGraph {
-    fn from(sentence: Sentence) -> Self {
-        let mut g = Graph::new();
-
-        let nodes: Vec<_> = sentence
-            .into_iter()
-            .enumerate()
-            .map(|(offset, token)| {
-                g.add_node(DependencyNode {
-                    token: token.clone(),
-                    offset: offset,
-                })
-            })
-            .collect();
-
-        for (idx, node_idx) in nodes.iter().enumerate() {
-            let head = g[*node_idx].token.head();
-
-            let rel = g[*node_idx]
-                .token
-                .head_rel()
-                .expect("Dependency relation missing")
-                .to_owned();
-
-            let head = head.expect("Token does not have a head");
-
-            if head != 0 {
-                g.add_edge(nodes[head - 1], nodes[idx], rel);
-            }
-        }
-
-        DependencyGraph(g)
-    }
-}
 
 pub trait Dot {
     fn dot(&self) -> Result<String, Error>;
 }
 
-impl Dot for DependencyGraph {
+impl Dot for Sentence {
     fn dot(&self) -> Result<String, Error> {
         graph_to_dot(self)
     }
@@ -65,7 +21,7 @@ pub trait Tikz {
     fn tikz(&self) -> Result<String, Error>;
 }
 
-impl Tikz for DependencyGraph {
+impl Tikz for Sentence {
     fn tikz(&self) -> Result<String, Error> {
         graph_to_tikz(self)
     }
@@ -75,11 +31,12 @@ pub trait Tokens {
     fn tokens(&self) -> Vec<&str>;
 }
 
-impl Tokens for DependencyGraph {
+impl Tokens for Sentence {
     fn tokens(&self) -> Vec<&str> {
         let mut tokens = Vec::new();
-        for node_idx in self.0.node_indices() {
-            tokens.push(self.0[node_idx].token.form());
+        for token_idx in 0..self.len() {
+            let token = ok_or!(self[token_idx].token(), continue);
+            tokens.push(token.form());
         }
 
         tokens
@@ -90,7 +47,7 @@ pub trait Svg {
     fn svg(&self) -> Result<String, Error>;
 }
 
-impl Svg for DependencyGraph {
+impl Svg for Sentence {
     fn svg(&self) -> Result<String, Error> {
         let dot = self.dot()?;
         dot_to_svg(&dot)
@@ -131,7 +88,7 @@ where
     s.as_ref().replace('"', r#"\""#)
 }
 
-fn graph_to_dot(graph: &DependencyGraph) -> Result<String, Error> {
+fn graph_to_dot(sentence: &Sentence) -> Result<String, Error> {
     let mut dot = String::new();
 
     dot.push_str("digraph deptree {\n");
@@ -140,10 +97,12 @@ fn graph_to_dot(graph: &DependencyGraph) -> Result<String, Error> {
         "node [shape=plaintext, height=0, width=0, fontsize=12, fontname=\"Helvetica\"]\n",
     );
 
-    for node_idx in graph.0.node_indices() {
-        let marked = graph.0[node_idx]
-            .token
-            .features()
+    for token_idx in 0..sentence.len() {
+        let token = ok_or!(sentence[token_idx]
+            .token(), continue);
+
+        let marked = 
+            token.features()
             .map(Features::as_map)
             .map(|m| m.contains_key("mark"))
             .unwrap_or(false);
@@ -152,31 +111,34 @@ fn graph_to_dot(graph: &DependencyGraph) -> Result<String, Error> {
             writeln!(
                 &mut dot,
                 r#"n{}[label="{}", fontcolor="firebrick3"];"#,
-                node_idx.index(),
-                escape_str(graph.0[node_idx].token.form())
+                token_idx,
+                escape_str(token.form())
             )?;
         } else {
             writeln!(
                 &mut dot,
                 r#"n{}[label="{}"];"#,
-                node_idx.index(),
-                escape_str(graph.0[node_idx].token.form())
+                token_idx,
+                escape_str(token.form())
             )?;
         }
     }
 
     dot.push_str("edge [color=\"#4b0082\", fontsize=\"8\", fontname=\"Courier New\"]\n");
 
-    for edge_idx in graph.0.edge_indices() {
-        let weight = &graph.0[edge_idx];
-        let (source, target) = graph.0.edge_endpoints(edge_idx).unwrap();
+    let graph = sentence.graph();
+    for token_idx in 0..sentence.len() {
+        let triple = ok_or!(graph.head(token_idx), continue);
+        if sentence[triple.head()] == Node::Root {
+            continue;
+        }
 
         writeln!(
             &mut dot,
             r#"n{} -> n{}[label="{}"];"#,
-            source.index(),
-            target.index(),
-            escape_str(weight)
+            triple.head(),
+            triple.dependent(),
+            escape_str(triple.relation().unwrap_or("_"))
         )?;
     }
 
@@ -185,7 +147,7 @@ fn graph_to_dot(graph: &DependencyGraph) -> Result<String, Error> {
     Ok(dot)
 }
 
-fn graph_to_tikz(graph: &DependencyGraph) -> Result<String, Error> {
+fn graph_to_tikz(sentence: &Sentence) -> Result<String, Error> {
     let mut dot = String::new();
 
     dot.push_str("\\documentclass{standalone}\n\n");
@@ -194,37 +156,34 @@ fn graph_to_tikz(graph: &DependencyGraph) -> Result<String, Error> {
     dot.push_str("\\begin{dependency}\n");
     dot.push_str("\\begin{deptext}");
 
-    dot.push_str(&graph
-        .0
-        .node_indices()
-        .map(|idx| {
-            let marked = graph.0[idx]
-                .token
-                .features()
+    dot.push_str(&(0..sentence.len())
+        .filter_map(|idx| {
+            let token = ok_or!(sentence[idx].token(), return None);
+            let marked = token.features()
                 .map(Features::as_map)
                 .map(|m| m.contains_key("mark"))
                 .unwrap_or(false);
 
             if marked {
-                format!("\\underline{{{}}}", graph.0[idx].token.form())
+                Some(format!("\\underline{{{}}}", token.form()))
             } else {
-                graph.0[idx].token.form().to_owned()
+                Some(token.form().to_owned())
             }
         })
         .join(" \\& "));
 
     dot.push_str("\\\\\n\\end{deptext}\n");
 
-    for edge_idx in graph.0.edge_indices() {
-        let weight = &graph.0[edge_idx];
-        let (source, target) = graph.0.edge_endpoints(edge_idx).unwrap();
+    let graph = sentence.graph();
+    for token_idx in 0..sentence.len() {
+        let triple = ok_or!(graph.head(token_idx), continue);
 
         writeln!(
             &mut dot,
             "\\depedge{{{}}}{{{}}}{{{}}}",
-            source.index() + 1,
-            target.index() + 1,
-            escape_str(weight)
+            triple.head() + 1,
+            triple.dependent() + 1,
+            escape_str(triple.relation().unwrap_or("_"))
         )?;
     }
 

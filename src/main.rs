@@ -9,7 +9,6 @@ extern crate gio;
 extern crate glib;
 extern crate gtk;
 extern crate itertools;
-extern crate petgraph;
 extern crate rsvg;
 extern crate stdinout;
 
@@ -23,6 +22,8 @@ use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Receiver};
 use std::thread;
 
+use conllx::graph::Sentence;
+use conllx::io::Reader;
 use failure::Error;
 use getopts::Options;
 use gio::{ApplicationExt, ApplicationExtManual};
@@ -31,14 +32,14 @@ use gtk::LabelExt;
 use rsvg::Handle;
 use stdinout::{Input, OrExit};
 
+#[macro_use]
+mod macros;
+
 mod error;
 use error::ViewerError;
 
 mod graph;
-use graph::{DependencyGraph, Dot, Svg, Tikz, Tokens};
-
-#[macro_use]
-mod macros;
+use graph::{Dot, Svg, Tikz, Tokens};
 
 mod model;
 use model::{ModelUpdate, StatefulTreebankModel};
@@ -91,7 +92,7 @@ fn main() {
     gtk::init().or_exit("Failed to initialize GTK", 1);
 
     thread::spawn(clone!(treebank_model => move || {
-        let reader = conllx::Reader::new(input.buf_read().or_exit("Cannot open input for reading", 1));
+        let reader = Reader::new(input.buf_read().or_exit("Cannot open input for reading", 1));
 
         let dep_graph_iter = reader.into_iter().map(|sent| {
             let sent = sent.or_exit("Cannot read sentence", 1);
@@ -181,7 +182,7 @@ fn setup_header_bar(treebank_model: &mut StatefulTreebankModel, builder: &gtk::B
 }
 
 thread_local!(
-    static DEPTREE_KEY: RefCell<Option<(Rc<RefCell<DependencyTreeWidget>>, Receiver<DependencyGraph>)>> = RefCell::new(None)
+    static DEPTREE_KEY: RefCell<Option<(Rc<RefCell<DependencyTreeWidget>>, Receiver<Sentence>)>> = RefCell::new(None)
 );
 
 fn create_dependency_tree_widget(
@@ -232,7 +233,7 @@ fn create_dependency_tree_widget(
 }
 
 thread_local!(
-    static SENTENCE_KEY: RefCell<Option<(SentenceWidget, Receiver<DependencyGraph>)>> = RefCell::new(None)
+    static SENTENCE_KEY: RefCell<Option<(SentenceWidget, Receiver<Sentence>)>> = RefCell::new(None)
 );
 
 fn setup_sentence_widget(treebank_model: &mut StatefulTreebankModel, builder: &gtk::Builder) {
